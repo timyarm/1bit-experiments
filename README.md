@@ -93,18 +93,6 @@ EFI = sign * gradient * 2 * scale * input_magnitude
 
 > [Full writeup](docs/graduated-growth.md) | [Code](experiments/graduated-growth/)
 
-### 6. MoE Expert Independence — Why Delta Encoding Fails
-**GLM-4.7-Flash (30B, 64 experts): expert sign agreement is 50.03% — literally random.**
-
-- Consensus vs any single expert: 55%
-- No variance across all 64 experts (all within 0.1% of 55%)
-- Delta encoding is useless — deltas are as large as full copies
-- Each expert is an independent model, not a variation of a shared base
-
-This kills the "shared signs + expert delta masks" approach for MoE → 1-bit conversion.
-
-> [Full writeup](docs/moe-analysis.md) | [Code](experiments/moe-analysis/)
-
 ## Activation Probe Results (Bonsai 8B)
 
 Where the signal actually lives in a 1-bit model:
@@ -139,8 +127,6 @@ These experiments failed and the reasons are instructive:
 
 3. **PPL ≠ accuracy for reasoning.** Best math PPL (3.28) = worst GSM8K accuracy (8%). Optimizing for next-token prediction on math text improves common token prediction, not multi-step reasoning.
 
-4. **MoE experts share nothing.** 50% sign agreement = random. No shared structure to exploit.
-
 ## Reproducing
 
 All experiments ran on Modal (T4/A100) or local GPU (GTX 1660 Super, 6GB). Each experiment directory contains the full script with inline results and Modal deployment configs where applicable.
@@ -164,7 +150,6 @@ python experiments/bonsai-forensics/analyze.py
 | Bonsai 1.7B | prism-ml/Bonsai-1.7B | ~850 MB | Graduated growth experiments |
 | Qwen3-1.7B | Qwen/Qwen3-1.7B | ~850 MB | QAT + EGGROLL experiments |
 | SmolLM2-135M | HuggingFaceTB/SmolLM2-135M | ~70 MB | Fast iteration QAT |
-| GLM-4.7-Flash | zai-org/GLM-4.7-Flash | N/A | MoE analysis only |
 
 ## License
 
