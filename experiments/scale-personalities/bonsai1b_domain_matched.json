@@ -1,0 +1,70 @@
+{
+  "baseline": {
+    "gsm8k": {
+      "correct": 8,
+      "total": 150,
+      "accuracy": 0.05333333333333334
+    },
+    "mmlu_knowledge": {
+      "correct": 62,
+      "total": 144,
+      "accuracy": 0.4305555555555556
+    },
+    "mbpp": {
+      "correct": 0,
+      "total": 100,
+      "accuracy": 0.0
+    }
+  },
+  "math": {
+    "gsm8k": {
+      "correct": 42,
+      "total": 150,
+      "accuracy": 0.28
+    },
+    "mmlu_knowledge": {
+      "correct": 33,
+      "total": 144,
+      "accuracy": 0.22916666666666666
+    },
+    "mbpp": {
+      "correct": 0,
+      "total": 100,
+      "accuracy": 0.0
+    }
+  },
+  "knowledge": {
+    "gsm8k": {
+      "correct": 7,
+      "total": 150,
+      "accuracy": 0.04666666666666667
+    },
+    "mmlu_knowledge": {
+      "correct": 67,
+      "total": 144,
+      "accuracy": 0.4652777777777778
+    },
+    "mbpp": {
+      "correct": 0,
+      "total": 100,
+      "accuracy": 0.0
+    }
+  },
+  "code": {
+    "gsm8k": {
+      "correct": 11,
+      "total": 150,
+      "accuracy": 0.07333333333333333
+    },
+    "mmlu_knowledge": {
+      "correct": 58,
+      "total": 144,
+      "accuracy": 0.4027777777777778
+    },
+    "mbpp": {
+      "correct": 0,
+      "total": 100,
+      "accuracy": 0.0
+    }
+  }
+}

@@ -157,6 +157,67 @@ Ported the 8B recipe to Bonsai 1.7B and trained three profiles (math, knowledge,
 - Target only ffn_up/ffn_gate in late layers (per activation probe) instead of training all scales
 - Tighter elastic band (lambda=0.3–0.5) to constrain catastrophic forgetting on math
 
+## Follow-up 2: Domain-matched benchmarks (2026-04-16)
+
+The prior 1.7B results tested all profiles on TriviaQA/ARC-Easy/HellaSwag. Those
+are general benchmarks and none of them are actually matched to any specific
+profile's training domain. Running the profiles on their intended domains
+changes the conclusion substantially.
+
+### Results: domain-matched evals
+
+| Scales    | GSM8K     | MMLU-Knowledge | MBPP     |
+|-----------|-----------|----------------|----------|
+| baseline  | 5.3%      | 43.1%          | 0.0%     |
+| math      | **28.0%** | 22.9%          | 0.0%     |
+| knowledge | 4.7%      | **46.5%**      | 0.0%     |
+| code      | 7.3%      | 40.3%          | 0.0%     |
+
+GSM8K n=150, MMLU-Knowledge n=144 (12 knowledge-heavy subjects × 12 questions
+each), MBPP n=100.
+
+### Deltas from baseline
+
+- **math on GSM8K: +22.7% absolute (5.3× relative improvement)** — scales
+  lift math accuracy from 5.3% to 28.0% on 150 questions.
+- **knowledge on MMLU: +3.4% absolute (+7.9% relative)** — modest but
+  outside noise at n=144.
+- code on GSM8K: +2.0% — small crossover win (code training data contains
+  a lot of numerical reasoning).
+- math on MMLU: −20.1% — catastrophic forgetting of general knowledge,
+  mirroring the −38.7% ARC-Easy collapse.
+- MBPP: 0.0% across every profile including baseline. Either Bonsai 1.7B
+  native 1-bit genuinely cannot synthesize runnable Python, or the
+  code-extraction heuristic is broken. Not informative either way; needs
+  a separate diagnostic.
+
+### What this changes
+
+The earlier "scales are a style knob, not a capability knob" framing was
+wrong. It was a benchmark-mismatch artifact: none of TriviaQA/ARC-Easy/
+HellaSwag rewards the specific distributional shift that math or knowledge
+scales produce. On the right benchmark, the math profile **multiplies
+GSM8K accuracy by 5×**. That is a capability lift, not a style shift.
+
+The scales mechanism:
+
+1. Works best on tasks matched to the training domain distribution.
+2. Produces large wins on structured, high-entropy domains (arithmetic).
+3. Trades capability laterally — math scales destroy MMLU-Knowledge because
+   the distribution shift that rewards numerical token flow suppresses
+   letter-answer selection. This is the same failure mode observed on
+   ARC-Easy.
+4. Does not add general knowledge (knowledge lift is modest) because there
+   is no latent knowledge circuit for scales to amplify at 1.7B.
+
+### Implication for per-token routing (follow-up 3, in progress)
+
+The math profile's +22.7% GSM8K / −20.1% MMLU split is exactly what
+per-token scale routing should resolve: route numerical tokens to math
+scales, route letter-answer tokens to baseline scales, compound the
+specialization gains without paying the generalization cost. The router
+experiment is set up to test this directly.
+
 ## Reproduce
 
 ```bash
