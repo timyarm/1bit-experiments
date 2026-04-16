@@ -54,7 +54,11 @@ MAX_LEN = 64
 EPOCHS = 3
 TRAIN_EXAMPLES_PER_DOMAIN = 120  # 4 domains * 120 = 480 examples
 LR = 5e-4
-ENTROPY_BONUS = 0.01  # prevent router collapse to one profile
+ENTROPY_BONUS = 0.001
+DOMAIN_CE_WEIGHT = 1.0  # V2: teach router to classify domain from input
+
+# Map training domain → profile index (PROFILES = ["baseline", "math", "knowledge", "code"])
+DOMAIN_TO_PROFILE = {"general": 0, "math": 1, "knowledge": 2, "code": 3}
 
 
 # ─── RoutedBitLinear ────────────────────────────────────────────────────
@@ -146,6 +150,9 @@ class SequenceScaleRouter(nn.Module):
 
     V1 routes at sequence level (one profile blend per input). Per-token
     routing is future work once we have more VRAM.
+
+    Bias init [5, 0, 0, 0] → softmax ≈ [0.98, 0.007, 0.007, 0.007] so
+    training starts with blended scales ≈ baseline (numerically stable).
     """
 
     def __init__(self, hidden_dim, n_profiles, mid=128):
@@ -156,15 +163,22 @@ class SequenceScaleRouter(nn.Module):
             nn.Linear(mid, n_profiles),
         )
         nn.init.zeros_(self.net[-1].weight)
-        nn.init.zeros_(self.net[-1].bias)
+        bias = torch.zeros(n_profiles)
+        bias[0] = 5.0  # prefer baseline profile at init for stability
+        with torch.no_grad():
+            self.net[-1].bias.copy_(bias)
 
-    def forward(self, embeds):
+    def forward(self, embeds, return_logits=False):
         # embeds: [B, S, hidden] → mean-pool over S → [B, hidden]
         pooled = embeds.mean(dim=1)
         logits = self.net(pooled)  # [B, P]
         probs = F.softmax(logits, dim=-1)
-        # For V1 single-batch training, squeeze to [P]
-        return probs.squeeze(0) if probs.shape[0] == 1 else probs
+        if probs.shape[0] == 1:
+            probs = probs.squeeze(0)
+            logits = logits.squeeze(0)
+        if return_logits:
+            return probs, logits
+        return probs
 
 
 # ─── Loading ─────────────────────────────────────────────────────────────
@@ -322,6 +336,7 @@ def train_router(model, router, tokenizer, train_data, epochs=EPOCHS, lr=LR):
     for epoch in range(epochs):
         total_loss = 0
         total_entropy = 0
+        total_domain_loss = 0
         domain_dist = {d: np.zeros(len(PROFILES)) for d in ["math", "knowledge", "code", "general"]}
         n = 0
 
@@ -334,23 +349,35 @@ def train_router(model, router, tokenizer, train_data, epochs=EPOCHS, lr=LR):
 
             with torch.amp.autocast('cuda', dtype=torch.float16):
                 embeds = embed_layer(tokens.input_ids)  # [B, S, hidden]
-                routing = router(embeds.float()).half()  # [B, S, P]
 
-                set_routing(model, routing)
-                try:
+            # Router and blending in fp32 for numeric stability
+            routing, route_logits = router(embeds.float(), return_logits=True)  # [P], [P] fp32
+
+            set_routing(model, routing)
+            try:
+                with torch.amp.autocast('cuda', dtype=torch.float16):
                     out = model(
                         inputs_embeds=embeds,
                         labels=tokens.input_ids,
                         use_cache=False,
                     )
-                finally:
-                    clear_routing(model)
+            finally:
+                clear_routing(model)
 
-                loss = out.loss
+            lm_loss = out.loss
+            if not torch.isfinite(lm_loss):
+                log.warning(f"    non-finite lm_loss on {dom} — skipping")
+                optimizer.zero_grad()
+                n += 1
+                continue
 
-                # Entropy bonus: encourage diverse routing
-                entropy = -(routing * torch.log(routing + 1e-9)).sum()
-                total_loss_term = loss - ENTROPY_BONUS * entropy
+            # Domain classification loss — teaches router to condition on input
+            domain_idx = DOMAIN_TO_PROFILE[dom]
+            target = torch.tensor([domain_idx], device=DEVICE)
+            domain_loss = F.cross_entropy(route_logits.unsqueeze(0), target)
+
+            entropy = -(routing * torch.log(routing + 1e-9)).sum()
+            total_loss_term = lm_loss + DOMAIN_CE_WEIGHT * domain_loss - ENTROPY_BONUS * entropy
 
             total_loss_term.backward()
             torch.nn.utils.clip_grad_norm_(router.parameters(), 1.0)
@@ -358,8 +385,9 @@ def train_router(model, router, tokenizer, train_data, epochs=EPOCHS, lr=LR):
             scheduler.step()
             optimizer.zero_grad()
 
-            total_loss += loss.item()
+            total_loss += lm_loss.item()
             total_entropy += entropy.item()
+            total_domain_loss = total_domain_loss + domain_loss.item() if n > 0 else domain_loss.item()
             # Track mean routing per domain
             mean_route = routing.detach().cpu().float().numpy()
             if mean_route.ndim > 1:
@@ -369,8 +397,9 @@ def train_router(model, router, tokenizer, train_data, epochs=EPOCHS, lr=LR):
 
         avg_loss = total_loss / max(n, 1)
         avg_ent = total_entropy / max(n, 1)
+        avg_dom = total_domain_loss / max(n, 1)
         vram = torch.cuda.memory_allocated() / 1e9
-        log.info(f"  Epoch {epoch+1}/{epochs}: loss={avg_loss:.4f} entropy={avg_ent:.3f} VRAM={vram:.1f}GB")
+        log.info(f"  Epoch {epoch+1}/{epochs}: lm={avg_loss:.4f} dom_ce={avg_dom:.4f} entropy={avg_ent:.3f} VRAM={vram:.1f}GB")
         for d, dist in domain_dist.items():
             dist = dist / max(n, 1) * 4  # normalize (rough)
             # normalize to sum to 1
@@ -512,7 +541,8 @@ def main():
 
     # Build router
     hidden_dim = model.config.hidden_size
-    router = SequenceScaleRouter(hidden_dim, len(PROFILES)).to(DEVICE).half()
+    # Router stays fp32 for numeric stability; cheap (~260K params)
+    router = SequenceScaleRouter(hidden_dim, len(PROFILES)).to(DEVICE)
     log.info(f"  router: {hidden_dim} → {len(PROFILES)} profiles")
 
     # Data

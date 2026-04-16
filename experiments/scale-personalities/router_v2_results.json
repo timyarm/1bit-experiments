@@ -1,0 +1,17 @@
+{
+  "trivia": {
+    "correct": 6,
+    "total": 100,
+    "accuracy": 0.06
+  },
+  "arc_easy": {
+    "correct": 70,
+    "total": 100,
+    "accuracy": 0.7
+  },
+  "hellaswag": {
+    "correct": 34,
+    "total": 100,
+    "accuracy": 0.34
+  }
+}
