@@ -1,0 +1,70 @@
+{
+  "baseline": {
+    "trivia": {
+      "correct": 14,
+      "total": 150,
+      "accuracy": 0.09333333333333334
+    },
+    "arc_easy": {
+      "correct": 97,
+      "total": 150,
+      "accuracy": 0.6466666666666666
+    },
+    "hellaswag": {
+      "correct": 53,
+      "total": 150,
+      "accuracy": 0.35333333333333333
+    }
+  },
+  "math": {
+    "trivia": {
+      "correct": 9,
+      "total": 150,
+      "accuracy": 0.06
+    },
+    "arc_easy": {
+      "correct": 39,
+      "total": 150,
+      "accuracy": 0.26
+    },
+    "hellaswag": {
+      "correct": 63,
+      "total": 150,
+      "accuracy": 0.42
+    }
+  },
+  "knowledge": {
+    "trivia": {
+      "correct": 11,
+      "total": 150,
+      "accuracy": 0.07333333333333333
+    },
+    "arc_easy": {
+      "correct": 94,
+      "total": 150,
+      "accuracy": 0.6266666666666667
+    },
+    "hellaswag": {
+      "correct": 52,
+      "total": 150,
+      "accuracy": 0.3466666666666667
+    }
+  },
+  "code": {
+    "trivia": {
+      "correct": 10,
+      "total": 150,
+      "accuracy": 0.06666666666666667
+    },
+    "arc_easy": {
+      "correct": 97,
+      "total": 150,
+      "accuracy": 0.6466666666666666
+    },
+    "hellaswag": {
+      "correct": 45,
+      "total": 150,
+      "accuracy": 0.3
+    }
+  }
+}
