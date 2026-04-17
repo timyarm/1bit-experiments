@@ -114,7 +114,7 @@ Models: [Bonsai 8B](https://huggingface.co/prism-ml/Bonsai-8B-unpacked) (scale p
 ## Planned experiments
 
 - [**Safety-scale pilot**](docs/safety-scale-pilot.md) — does the scale-personality mechanism extend from domain (math/code/knowledge) to *policy* (refusal/safety behavior)? Pre-registered plan for a floor+boost architecture with a Pareto sweep of safety-floor weight vs capability. Both outcomes informative — null result bounds the theory; positive result gives modular auditable safety. ~5hr local GPU, not yet executed.
-- [**A100 burst validation**](experiments/CATALOG.md) — GSM8K n=500, MATH-competition OOD, LoRA baseline at matched ~125MB parameter count, 8B v2 recipe replication. The queue that would let the current small-n findings graduate to paper-confidence.
+- [**A100 burst validation**](docs/a100-burst-plan.md) — GSM8K n=500 + MATH-competition OOD, LoRA baseline at matched ~125MB, router at n=400, 8B v2 recipe replication. Total estimated budget $30-50. The queue that would let the current small-n findings graduate to paper-confidence.
 
 ## Collaboration note
 
