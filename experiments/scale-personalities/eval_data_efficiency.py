@@ -43,8 +43,9 @@ REG_LAMBDA = 0.1
 TOKEN_SELECT_RATIO = 0.6
 DOMAIN_MIX = 0.7
 
-N_TRAIN_POINTS = [10, 30, 100, 300]
+N_TRAIN_POINTS = [int(x) for x in os.environ.get("DEFF_N_LIST", "10,30,100,300").split(",")]
 N_GSM8K_EVAL = 100
+RESULTS_JSON = f"{os.path.expanduser('~/freigent/apps/trucksim/checkpoints')}/data_efficiency_results.json"
 
 
 def get_math_data(n_needed):
@@ -279,11 +280,20 @@ def main():
         delta = r['gsm8k'] - base_acc
         log.info(f"{r['n_train']:<10}{r['gsm8k']:<10.1%}{delta:+.1%}")
 
-    out_path = f"{CKPT}/data_efficiency_results.json"
+    # Merge into existing file so separate processes can accumulate points
+    out_path = RESULTS_JSON
     os.makedirs(CKPT, exist_ok=True)
+    existing = {}
+    if os.path.exists(out_path):
+        try:
+            with open(out_path) as f:
+                existing = json.load(f)
+        except Exception:
+            existing = {}
+    merged = {**existing, **results}
     with open(out_path, 'w') as f:
-        json.dump(results, f, indent=2)
-    log.info(f"\nSaved: {out_path}")
+        json.dump(merged, f, indent=2)
+    log.info(f"\nSaved: {out_path}  (points: {sorted(int(k) for k in merged)})")
     log.info(f"Total: {(time.time()-t0)/60:.1f} min")
 
 
