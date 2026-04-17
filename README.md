@@ -104,14 +104,7 @@ python experiments/scale-personalities/routed_scale_router.py
 modal run experiments/scale-personalities/train_8profiles.py
 ```
 
-Models used:
-
-| Model | Source | Size (1-bit) | Role |
-|---|---|---|---|
-| Bonsai 8B | prism-ml/Bonsai-8B-unpacked | 3.46 GB | 8-profile v1 recipe |
-| Bonsai 1.7B | prism-ml/Bonsai-1.7B-unpacked | ~850 MB | Scale personalities v2 + router |
-| Qwen3-1.7B | Qwen/Qwen3-1.7B | ~850 MB | QAT + EGGROLL |
-| SmolLM2-135M | HuggingFaceTB/SmolLM2-135M | ~70 MB | Fast iteration QAT |
+Models: [Bonsai 8B](https://huggingface.co/prism-ml/Bonsai-8B-unpacked) (scale personalities v1 / 8-profile) · [Bonsai 1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-unpacked) (scale personalities v2 + router) · [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) (QAT + EGGROLL) · [SmolLM2-135M](https://huggingface.co/HuggingFaceTB/SmolLM2-135M) (fast iteration QAT).
 
 ## Collaboration note
 
