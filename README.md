@@ -91,25 +91,9 @@ The two most load-bearing ones; full list + diagnosis in [CATALOG](experiments/C
 
 ## Reproducing
 
-```bash
-# Deps
-pip install torch transformers datasets safetensors nltk gguf
+Full commands, dependencies, and paths in [**docs/reproducing.md**](docs/reproducing.md). The headline GSM8K 5.3× result is `scale_v2_proper.py` + `eval_domain_matched.py` on a 6GB local GPU; the 8B profile results use `modal run experiments/scale-personalities/train_8profiles.py`.
 
-# Bonsai forensic analysis (CPU-only)
-python experiments/bonsai-forensics/analyze.py
-
-# Scale personalities v2 (single ~6GB GPU)
-python experiments/scale-personalities/scale_v2_proper.py
-python experiments/scale-personalities/eval_domain_matched.py
-
-# Scale router (requires trained scales from above)
-python experiments/scale-personalities/routed_scale_router.py
-
-# 8B 8-profile training (Modal T4, ~2-3 hr)
-modal run experiments/scale-personalities/train_8profiles.py
-```
-
-Models: [Bonsai 8B](https://huggingface.co/prism-ml/Bonsai-8B-unpacked) (scale personalities v1 / 8-profile) · [Bonsai 1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-unpacked) (scale personalities v2 + router) · [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) (QAT + EGGROLL) · [SmolLM2-135M](https://huggingface.co/HuggingFaceTB/SmolLM2-135M) (fast iteration QAT).
+Models: [Bonsai 8B](https://huggingface.co/prism-ml/Bonsai-8B-unpacked) · [Bonsai 1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-unpacked) · [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) · [SmolLM2-135M](https://huggingface.co/HuggingFaceTB/SmolLM2-135M).
 
 ## Planned experiments
 
