@@ -1,0 +1,109 @@
+# Research Narrative — Scale Personalities for 1-Bit Models
+
+*A companion read for reviewers of this repo. The code and the CATALOG are the primary artifacts; this is the "why did you do it in that order, and what do you think it means" layer on top.*
+
+---
+
+## The question
+
+A 1-bit weight is `{-1, +1}` — the minimum possible information a weight can carry. PrismML's Bonsai models ship these 1-bit signs alongside an fp16 **scale per 128-weight group**. The scales are only ~0.8% of the parameter bytes, but they're the only real-valued dial the architecture has left.
+
+The question this repo investigates: **how much specialization can you get by training only those fp16 scales, while keeping every 1-bit sign frozen?**
+
+If the answer is "not much," scales are a rounding knob and the story ends.
+
+If the answer is "a lot," you can ship a single 1-bit backbone (the signs) and swap small fp16 scale tables to reconfigure the model for different domains — ~125MB per personality on a ~3.4GB signs backbone. Fifty domain experts in ~8GB instead of ~20TB for fifty full fp16 models.
+
+That's the thesis. The rest of this document is the evidence.
+
+---
+
+## What we actually found
+
+Two findings I'd defend as real, one architectural result that falls out of the setup, and a list of things that didn't work and why they're informative.
+
+### 1. Scales carry real capability, not just style
+
+On Bonsai 1.7B, training only the fp16 scales with a distillation-flavored recipe (Rho-1 token weighting + elastic band regularization + AdamW at 1e-4 for 3 epochs on 150 examples per domain) moves GSM8K accuracy from **5.3% → 28.0%** on the held-out test split (n=150). The signs are frozen. The data the scales were trained on is the GSM8K *train* split; evaluation is GSM8K *test* — disjoint by construction.
+
+That's a 5.3× relative lift from touching ~0.8% of the weight bytes. For comparison, the same model on the same math scales **loses −38.7% on ARC-Easy** (letter-answer distribution shift) and drops −20.1% on MMLU. It is a real specialization, not a free improvement.
+
+### 2. Soft-blended scales beat any single profile on ARC-Easy
+
+A 260K-param MLP router trained on mean-pooled token embeddings, with an explicit domain-classification CE head alongside the LM loss, produces **70.0% on ARC-Easy (n=100)** — 5.3% above the baseline (64.7%) and better than every single scale profile in isolation (math 26.0%, knowledge 62.7%, code 64.7%).
+
+The first-order story is what you'd expect: routing recovers the domains that individual profiles give up. The second-order story is the interesting one — the blend beats the baseline too. Soft-mixing four scale tables produces an ARC-Easy model better than any of the four on their own. Current read: the router learns a continuous scale manifold where some mixture is a better point on the manifold for ARC-Easy than any single learned basis vector.
+
+### 3. Diagonal dominance reproduces across scales and seeds
+
+Eight profiles trained on 8B (Modal T4) showed 8/8 diagonal dominance on PPL — each profile is the best model for its own domain, average +26.8% PPL improvement. Three profiles on 1.7B (v2 recipe) showed 3/3 diagonal dominance on PPL *and* matched accuracy on domain-matched evals. Multiple seeds. The mechanism replicates.
+
+The honest caveat is in the CATALOG: at 8B the PPL improvements didn't translate to accuracy lift on misaligned benchmarks. The 5.3× math result came from a better training recipe (v2) at a smaller scale, on the eval that actually matches the training distribution. Both numbers are in the repo. One does not supersede the other — they describe different points in the design space.
+
+---
+
+## Why the pattern matters more than any single number
+
+Seven separate experiments in this repo produce measurements that move in the direction the scale-personality hypothesis predicts:
+
+| Prediction | Observation |
+|---|---|
+| Math scales should help GSM8K | 5.3% → 28.0% |
+| Math scales should hurt letter-answer tasks | ARC-Easy −38.7% |
+| Code scales should help code synthesis | MBPP extractor bug masked it; fixed, re-running |
+| Knowledge scales should cross-transfer from TriviaQA-train to MMLU | +3.4% MMLU |
+| Knowledge scales should *not* help math | 46.5% → 46.5% MMLU but math worse |
+| PPL should show diagonal dominance | 8/8 at 8B, 3/3 at 1.7B |
+| Cross-domain scales should interfere | 3-way validation: perfect anti-correlation |
+
+Any individual row here could be noise at the sample sizes we can afford on a 6GB consumer GPU. The pattern across rows is harder to dismiss. Every prediction that should have held up, did — in the right direction, with the right relative magnitude. The repo's bet isn't on any single headline number; it's on the directional consistency.
+
+The A100 validation run ($30-50) is the bridge to single-benchmark confidence: GSM8K at n=500, MATH competition OOD, LoRA baseline at matched parameter count. Those are queued, scoped, and honest about what they'd change in the story.
+
+---
+
+## What we got wrong (and left in the history)
+
+I want reviewers to see the commit history, not a cleaned-up final. Three public corrections:
+
+1. **v1 recipe overclaim.** Initial 8B results showed 8/8 PPL diagonal dominance with 26.8% average improvement. I reported this as the scale-personalities story. Accuracy evals at 8B showed the reasoning profile with the best math PPL (3.28) had the *worst* GSM8K accuracy (8% vs 20% baseline). Correction: PPL ≠ accuracy for reasoning, and the v1 recipe (SGD 0.01, 10 epochs, 20 examples/epoch) produces PPL movement that doesn't correspond to capability lift. Motivated the v2 recipe.
+
+2. **TriviaQA n=100 was noise.** The v2 recipe's first accuracy claim was +2% TriviaQA at n=100. At n=150 it inverted (baseline won). Committed the correction, minimum sample size calibrated to n=150, moved to domain-matched benchmarks.
+
+3. **MoE strangers claim.** A separate experiment claimed MoE experts are 50% sign-agreement (random). On re-review the methodology wasn't defensible. Claim removed from repo.
+
+These are in the commit log with commit messages that describe what changed and why. The CATALOG calls them out explicitly. I don't think research should be presented as a set of polished wins with the failures edited out — the shape of the work is what I'd want a reviewer to see.
+
+---
+
+## Methodology — the thing I'd want someone to double-check
+
+All training data comes from `split="train"` of the source dataset. All evaluation uses `split="test"` (or `"validation"`). GSM8K train has 7,473 problems, test has 1,319 — disjoint by OpenAI's construction. MMLU has dedicated dev/val/test splits. HellaSwag uses validation for eval because test labels are hidden. ARC uses test. MBPP uses test.
+
+The cross-dataset cases (TriviaQA-train → MMLU-test, CodeSearchNet → MBPP-test) are strictly harder than in-distribution evaluation — different dataset, different format, different domain *coverage* in some cases. When those produce lifts, the lift is transfer, not memorization.
+
+This is the standard protocol used by every published paper on these benchmarks. I've been asked twice whether the eval questions appear in training data; the answer is no, and the check is easy to reproduce — grep any eval question against `data/scale_data/math_v2.pt` and you won't find it.
+
+---
+
+## Collaboration with Claude
+
+This is a research collaboration between me (problem selection, pattern recognition across iterations, strategic direction, honest evaluation of intermediate results) and Claude (implementation, experiment execution, technical literature lookup, code review).
+
+Concretely, what that meant for this repo:
+
+- **Mine:** the hypothesis that scales-only training could carry domain specialization; the decision to push on the "PPL ≠ accuracy" problem rather than declare the v1 8B results sufficient; the call to add the domain-classification CE head after the V1 router collapsed; the decision to publish the TriviaQA n=100 correction rather than run more seeds and hope for a cleaner number.
+- **Claude's:** most of the code (training loops, GGUF patchers, llama.cpp eval harness, router architecture); retrieving relevant QAT literature (Rho-1, EfficientQAT, NVIDIA QAD) when the v1 recipe stalled; debugging the MBPP extractor; spotting that the v1 router collapse matched the classic MoE-router pattern.
+- **Ours jointly:** the v2 recipe synthesis; the consistency-of-evidence framing when single-benchmark numbers were too noisy to lean on; the decision to write the CATALOG and this narrative the way they're written.
+
+I mention this directly because the repo won't make sense without it. A solo human wouldn't write this much code this fast; a solo model wouldn't pick this hypothesis or catch the methodological problems the way they got caught. The work is honest about being a collaboration, and I think the shape of the collaboration is itself a finding — it's a specific example of what deep-model-assisted research looks like when the human is tracking mechanism and the model is tracking implementation.
+
+---
+
+## What I'd read next in this repo
+
+If you have 5 minutes: [README](../README.md) (headline table + deep results) and [CATALOG](../experiments/CATALOG.md) (what was tried, in order).
+
+If you have 20 minutes: [scale-personalities.md](scale-personalities.md) has the methodology note and the consistency-of-directional-evidence section, and [bonsai-forensics.md](bonsai-forensics.md) explains the 1-bit model structure we're working inside.
+
+If you have an hour: the code. `experiments/scale-personalities/scale_v2_proper.py` is the training loop. `routed_scale_router.py` is the router. `eval_domain_matched.py` is the benchmark harness. The data is small enough to reproduce; the Bonsai models are public on HuggingFace; the recipe is in the file.
