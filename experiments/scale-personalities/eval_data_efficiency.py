@@ -148,9 +148,11 @@ def patch_gguf_with_scales(trained_scales, orig_scales, output_path):
             continue
         scales = name_to_trained[tname].cpu().numpy().astype(np.float16).flatten()
         offset = t.data_offset
-        for g in range(len(scales)):
-            block_start = offset + g * BLOCK
-            data[block_start:block_start + 2] = scales[g].view(np.uint8).tobytes()
+        n_groups = t.n_bytes // BLOCK
+        if len(scales) != n_groups:
+            continue
+        blocks = data[offset:offset + t.n_bytes].reshape(n_groups, BLOCK)
+        blocks[:, :2] = scales.view(np.uint8).reshape(n_groups, 2)
         patched += 1
     data.flush()
     return patched

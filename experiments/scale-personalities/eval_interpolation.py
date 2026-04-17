@@ -62,9 +62,13 @@ def patch_gguf(blended_scales, output_path, verbose=False):
             continue
         scales = name_to_scales[tname].cpu().numpy().astype(np.float16).flatten()
         offset = t.data_offset
-        for g in range(len(scales)):
-            block_start = offset + g * BLOCK
-            data[block_start:block_start + 2] = scales[g].view(np.uint8).tobytes()
+        n_groups = t.n_bytes // BLOCK
+        if len(scales) != n_groups:
+            if verbose:
+                log.info(f"  skip {tname}: scales={len(scales)} groups={n_groups}")
+            continue
+        blocks = data[offset:offset + t.n_bytes].reshape(n_groups, BLOCK)
+        blocks[:, :2] = scales.view(np.uint8).reshape(n_groups, 2)
         patched += 1
     data.flush()
     if verbose:
