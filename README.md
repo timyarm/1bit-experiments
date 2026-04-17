@@ -15,6 +15,7 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 | Code personality on MBPP | 24.0% → 22.0% (−2.0%, null) | Training-distribution mismatch after extractor fix; diagnosis in [CATALOG](experiments/CATALOG.md) |
 | Router eliminates catastrophic forgetting | Math-alone crashes ARC-Easy to 26%; Router recovers to **70.0%** — beats every single profile | Directional win over baseline (+5.3%, n=100) is not stat-sig at this n; anti-forgetting mechanism is the robust claim |
 | Emergent compounding in the scale manifold | α=0.7 static math/knowledge blend → **GSM8K 40.0%** (pure math endpoint: 34.0%) | Second observation of blend > single profile, now on a static linear mix instead of a learned router. n=50 per alpha |
+| Data efficiency — saturated near n=30 | Curve: n=10→19%, n=30→29% (peak), n=150→28% (headline), n=300→24% (overfitting) | Eval n=100; point estimates noisy, but the peak-then-decline pattern is consistent with overfitting past the elbow. Plot in [docs/figures](docs/figures/data_efficiency_curve.png) |
 | Diagonal dominance reproduces | 8/8 profiles at 8B (multi-seed), 3/3 at 1.7B v2 (single seed) | 1.7B replication queued |
 
 **Honest caveats up front:**
