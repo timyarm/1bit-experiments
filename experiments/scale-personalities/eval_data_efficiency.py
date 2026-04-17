@@ -191,6 +191,13 @@ def main():
     log.info(f"DATA EFFICIENCY CURVE — math scales @ n = {N_TRAIN_POINTS}")
     log.info(f"Eval: GSM8K test split n={N_GSM8K_EVAL}")
 
+    # ─── Phase 1: Baseline eval BEFORE loading HF model (full VRAM for llama.cpp) ───
+    log.info("\n--- BASELINE (n=0), pre-HF-load ---")
+    shutil.copy2(GGUF_BASE, GGUF_OUT)
+    base_acc = eval_gsm8k(GGUF_OUT)
+    log.info(f"  baseline GSM8K: {base_acc:.1%}")
+
+    # ─── Phase 2: Load HF model, train all n, save each trained scale set ───
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from packed_bitlinear import PackedBitLinear, convert_model
 
@@ -205,7 +212,6 @@ def main():
     model.gradient_checkpointing_enable()
     log.info(f"  VRAM: {torch.cuda.memory_allocated()/1e9:.2f}GB")
 
-    # Freeze everything except scales
     for p in model.parameters():
         p.requires_grad = False
     scale_params = []
@@ -215,52 +221,54 @@ def main():
             module.scales.requires_grad = True
             scale_params.append(module.scales)
             orig_scales[name] = module.scales.data.clone()
-
     log.info(f"  Trainable scale params: {sum(p.numel() for p in scale_params):,}")
 
-    # Cache data for largest size
     log.info("\n--- DATA ---")
     math_texts, diverse_texts = get_math_data(max(N_TRAIN_POINTS))
     log.info(f"  Loaded {len(math_texts)} math + {len(diverse_texts)} diverse pool")
 
-    results = {}
-
-    # Baseline eval (no training)
-    log.info("\n--- BASELINE (n=0) ---")
-    shutil.copy2(GGUF_BASE, GGUF_OUT)
-    base_acc = eval_gsm8k(GGUF_OUT)
-    log.info(f"  baseline GSM8K: {base_acc:.1%}")
-    results["0"] = {"n_train": 0, "gsm8k": base_acc, "train_time": 0.0}
+    trained_scales_by_n = {}
+    train_times_by_n = {}
 
     for n_train in N_TRAIN_POINTS:
-        log.info(f"\n{'='*50}")
-        log.info(f"n_train = {n_train}")
-        log.info(f"{'='*50}")
-
-        # Restore original scales
+        log.info(f"\n--- Training n={n_train} ---")
         for name, module in model.named_modules():
             if isinstance(module, PackedBitLinear) and name in orig_scales:
                 module.scales.data.copy_(orig_scales[name])
 
         train_texts = mix_data(math_texts, diverse_texts, n_train, seed=42)
-        log.info(f"  Training on {len(train_texts)} examples ({int(DOMAIN_MIX*100)}% math)")
+        log.info(f"  {len(train_texts)} examples ({int(DOMAIN_MIX*100)}% math)")
 
         t_train = time.time()
         train_math_scales(model, tokenizer, train_texts, orig_scales, scale_params)
-        train_time = time.time() - t_train
+        train_times_by_n[n_train] = time.time() - t_train
+        log.info(f"  trained in {train_times_by_n[n_train]:.0f}s")
 
-        # Snapshot trained scales
-        trained_scales = {}
+        trained = {}
         for name, module in model.named_modules():
             if isinstance(module, PackedBitLinear):
-                trained_scales[name] = module.scales.data.clone()
+                trained[name] = module.scales.data.clone().cpu()
+        trained_scales_by_n[n_train] = trained
 
-        # Patch + eval
-        log.info(f"  Patching GGUF and evaluating...")
-        patch_gguf_with_scales(trained_scales, orig_scales, GGUF_OUT)
+    # ─── Phase 3: Free HF model, eval each trained GGUF ───
+    log.info("\n--- Freeing HF model, starting evals ---")
+    del model
+    del scale_params
+    torch.cuda.empty_cache()
+    log.info(f"  VRAM after free: {torch.cuda.memory_allocated()/1e9:.2f}GB")
+
+    results = {"0": {"n_train": 0, "gsm8k": base_acc, "train_time": 0.0}}
+
+    for n_train in N_TRAIN_POINTS:
+        log.info(f"\n--- Eval n={n_train} ---")
+        patch_gguf_with_scales(trained_scales_by_n[n_train], orig_scales, GGUF_OUT)
         acc = eval_gsm8k(GGUF_OUT)
-        log.info(f"  n={n_train}  GSM8K={acc:.1%}  train_time={train_time:.0f}s")
-        results[str(n_train)] = {"n_train": n_train, "gsm8k": acc, "train_time": train_time}
+        log.info(f"  n={n_train}  GSM8K={acc:.1%}")
+        results[str(n_train)] = {
+            "n_train": n_train,
+            "gsm8k": acc,
+            "train_time": train_times_by_n[n_train],
+        }
 
     # Summary
     log.info(f"\n{'='*50}")
