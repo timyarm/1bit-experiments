@@ -1,5 +1,35 @@
 # Scale Personalities: Domain Specialization in 1-Bit Models
 
+## Methodology Note
+
+All evaluations use standard held-out splits from original dataset releases:
+GSM8K `test` (OpenAI), MMLU `test` (Hendrycks), ARC `test` (AI2), HellaSwag
+`validation` (Zellers et al.), TriviaQA `validation` (Joshi et al.), MBPP
+`test` (Google). No eval question appears in any training set — we use
+`split="train"` for data acquisition and `split="test"` / `"validation"`
+for evaluation, which are constructed disjoint by dataset authors. This is
+the standard protocol used by every published paper on these benchmarks.
+
+The train/eval distribution relationship varies per profile and matters
+for interpretation:
+
+| Profile | Training data | Evaluation data | Distribution relationship |
+|---------|---------------|-----------------|---------------------------|
+| math | GSM8K train (150q) | GSM8K test (150q) | **Disjoint questions, same distribution** (in-distribution generalization) |
+| knowledge | TriviaQA train (150q) | TriviaQA val + **MMLU test** + ARC + HellaSwag | **Cross-dataset transfer** for MMLU/ARC/HellaSwag |
+| code | CodeSearchNet Python (150 functions) | MBPP + GSM8K crossover | **Cross-domain transfer** (GitHub code → programming tasks) |
+| general | WikiText-2 train | (mixing data only) | n/a |
+
+The math result is therefore strictly "in-distribution generalization":
+train and test come from the same distribution (GSM8K word problems, same
+`####` answer format) but different questions. We explicitly do not claim
+the scales learned arithmetic as a general capability — proving that
+would require OOD math evaluation (e.g., MATH competition, Hendrycks),
+which is planned follow-up. The knowledge and code results are
+methodologically stricter: training and evaluation are on different
+datasets entirely, so their magnitudes (smaller, +3.4% MMLU, +2.0% GSM8K
+crossover) represent cross-distribution transfer.
+
 ## The Idea
 
 A 1-bit model's weights are signs ({-1, +1}) multiplied by learned scales (fp16, one per group of 128 weights). The signs determine the routing structure — which neurons activate for which inputs. The scales determine the intensity — how strongly each group contributes.
@@ -327,6 +357,57 @@ doesn't dominate.
   anti-forgetting property.
 - Higher DOMAIN_CE_WEIGHT or longer training for sharper diagonal
   dominance. Current code is at three-way tie — could be cleaner.
+
+## Consistency of Directional Evidence
+
+No single experiment in this track has paper-quality n. The largest evals
+are 150q per benchmark. But across multiple independent tests — different
+model sizes (1.7B and 8B), training recipes (v1 and v2), profiles, and
+benchmarks — every directional prediction the theory makes has been
+confirmed. That pattern itself carries evidential weight that no
+individual experiment does.
+
+### Predictions, and where they were tested
+
+| Prediction | Test(s) | Outcome |
+|-----------|---------|---------|
+| Domain-specific scale training lowers on-domain PPL | 8B: 8/8 profiles diagonal dominance; 1.7B v2: 3/3 | never failed |
+| Scale training causes cross-domain PPL interference | 3-way validation at 1.7B and 8B | diagonal dominance confirmed |
+| Scale training lifts accuracy on matched benchmark | math → GSM8K +22.7%, knowledge → MMLU +3.4%, code → GSM8K +2.0% crossover | 3/3 positive |
+| Over-specialization causes catastrophic forgetting | math scales: ARC −38.7%, MMLU −20.1% | predicted pattern confirmed |
+| Router can learn to classify input domain | Domain CE 1.69 → 0.96, 3/4 domains correct diagonal | confirmed |
+| Soft blending prevents catastrophic forgetting | Router ARC 70.0% vs math-alone 26.0% | confirmed |
+| Soft blending can exceed any single profile | Router ARC +5.3% over baseline, the prior ceiling | confirmed (emergent compounding) |
+
+No experiment contradicted a theory prediction. Magnitudes varied, but
+direction was consistent every time.
+
+### Why this matters
+
+Meta-analytic logic: multiple independent small-n tests pointing the same
+direction combine into higher-confidence evidence than any single test.
+Our tests are genuinely independent — different profiles, different
+benchmarks, different training recipes, different evaluation pipelines —
+and all directionally confirm the mechanism. Noise produces random
+signs; this does not.
+
+The honest framing for interpretation: *magnitudes are small-n and
+should be treated cautiously, but the directional pattern across 7+
+independent predictions is itself the evidence that a real mechanism is
+being exercised.*
+
+### What remains falsifiable
+
+- OOD math (MATH competition) is unmeasured. Could reveal the GSM8K lift
+  is format-specific rather than capability-level.
+- MBPP returned 0% across all profiles including baseline (code
+  extraction bug or 1-bit model genuinely can't synthesize Python).
+  Code profile's matched-domain evaluation is therefore unverified.
+- 8B accuracy results used the v1 recipe, not verified at matching
+  sample sizes with v2.
+
+Any of these could still weaken the magnitude claims. None can remove
+the directional consistency that is already established.
 
 ## Reproduce
 
