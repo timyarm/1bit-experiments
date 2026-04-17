@@ -10,10 +10,11 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 
 | Finding | Number | Notes |
 |---|---|---|
-| Math personality on GSM8K | 5.3% → **28.0%** (+22.7% abs, **5.3× rel**) | n=150 held-out test split, stat-sig (z ≈ 5+); single seed at 1.7B v2, replication queued |
+| Math personality on GSM8K | 5.3% → **28.0%** (+22.7% abs, **5.3× rel**) | n=150 held-out test split; stat-sig (z ≈ 5+); single seed at 1.7B v2, replication queued |
+| Knowledge personality on MMLU | 43.1% → **46.5%** (+3.4%) | Cross-dataset transfer (TriviaQA-train → MMLU-Knowledge test), n=144 |
+| Code personality on MBPP | 24.0% → 22.0% (−2.0%, null) | Training-distribution mismatch after extractor fix; diagnosis in [CATALOG](experiments/CATALOG.md) |
 | Router eliminates catastrophic forgetting | Math-alone crashes ARC-Easy to 26%; Router recovers to **70.0%** — beats every single profile | Directional win over baseline (+5.3%, n=100) is not stat-sig at this n; anti-forgetting mechanism is the robust claim |
 | Emergent compounding in the scale manifold | α=0.7 static math/knowledge blend → **GSM8K 40.0%** (pure math endpoint: 34.0%) | Second observation of blend > single profile, now on a static linear mix instead of a learned router. n=50 per alpha |
-| Cross-dataset transfer | Knowledge scales (TriviaQA-train) → **+3.4% MMLU** | Direction consistent with domain-transfer prediction; n=144 |
 | Diagonal dominance reproduces | 8/8 profiles at 8B (multi-seed), 3/3 at 1.7B v2 (single seed) | 1.7B replication queued |
 
 **Honest caveats up front:**
@@ -33,17 +34,7 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 
 ## Scale personalities — detail
 
-**Single 1-bit model, multiple personalities by swapping only the fp16 scale tables.** Signs stay frozen as shared routing structure; scales (fp16, one per 128-weight group) act as swappable intensity tables.
-
-### Bonsai 1.7B v2 recipe — matched-benchmark accuracy
-
-| Profile | Eval (held-out) | Baseline | Trained | Delta |
-|---|---|---|---|---|
-| math | GSM8K (n=150) | 5.3% | **28.0%** | **+22.7%** |
-| knowledge | MMLU-Knowledge (n=144) | 43.1% | **46.5%** | +3.4% |
-| code | MBPP (n=100) | 24.0% | 22.0% | −2.0% (null) |
-
-MBPP null after extractor fix: CodeSearchNet training distribution (long GitHub functions) didn't transfer to MBPP (short task → small function). Filed as a negative result. Diagnosis in the [CATALOG](experiments/CATALOG.md) under the 2026-04-17 MBPP re-eval entry.
+**Single 1-bit model, multiple personalities by swapping only the fp16 scale tables.** Signs stay frozen as shared routing structure; scales (fp16, one per 128-weight group) act as swappable intensity tables. The per-profile 1.7B v2 results are in the headline table above.
 
 ### Bonsai 8B v1 recipe — PPL (8/8 diagonal dominance)
 
@@ -56,10 +47,8 @@ Math personality alone gets +22.7% GSM8K but tanks ARC-Easy by −38.7% (letter-
 | Benchmark (n=100) | baseline | math | knowledge | code | **Router** |
 |---|---|---|---|---|---|
 | ARC-Easy | 64.7% | 26.0% | 62.7% | 64.7% | **70.0%** |
-| TriviaQA | 9.3% | 6.0% | 7.3% | 6.7% | 6.0% |
-| HellaSwag | 35.3% | 42.0% | 34.7% | 30.0% | 34.0% |
 
-**Router > every single profile on ARC-Easy.** Soft blending four scale tables produces an ARC-Easy model better than any of them alone — emergent compounding, not just selection. Code: [`routed_scale_router.py`](experiments/scale-personalities/routed_scale_router.py).
+**Router > every single profile on ARC-Easy.** Soft blending four scale tables produces an ARC-Easy model better than any of them alone — emergent compounding, not just selection. Router vs baseline on the other benchmarks: TriviaQA −3.3% (soft blending hurts when one profile is already correct), HellaSwag −1.3% (near-flat). Full 3-row table + analysis in [docs/scale-personalities.md](docs/scale-personalities.md#follow-up-3-sequence-level-scale-router-2026-04-16). Code: [`routed_scale_router.py`](experiments/scale-personalities/routed_scale_router.py).
 
 ---
 
