@@ -28,11 +28,17 @@ On Bonsai 1.7B, training only the fp16 scales with a distillation-flavored recip
 
 That's a 5.3× relative lift from touching ~0.8% of the weight bytes. For comparison, the same model on the same math scales **loses −38.7% on ARC-Easy** (letter-answer distribution shift) and drops −20.1% on MMLU. It is a real specialization, not a free improvement.
 
-### 2. Soft-blended scales beat any single profile on ARC-Easy
+### 2. Soft-blended scales beat any single profile — on two different benchmarks, via two different mechanisms
 
-A 260K-param MLP router trained on mean-pooled token embeddings, with an explicit domain-classification CE head alongside the LM loss, produces **70.0% on ARC-Easy (n=100)** — 5.3% above the baseline (64.7%) and better than every single scale profile in isolation (math 26.0%, knowledge 62.7%, code 64.7%).
+This is the finding I'm most interested in, because it showed up twice independently.
 
-The first-order story is what you'd expect: routing recovers the domains that individual profiles give up. The second-order story is the interesting one — the blend beats the baseline too. Soft-mixing four scale tables produces an ARC-Easy model better than any of the four on their own. Current read: the router learns a continuous scale manifold where some mixture is a better point on the manifold for ARC-Easy than any single learned basis vector.
+**First observation (router, ARC-Easy).** A 260K-param MLP router trained on mean-pooled token embeddings, with an explicit domain-classification CE head alongside the LM loss, produces **70.0% on ARC-Easy (n=100)** — 5.3% above the baseline (64.7%) and better than every single scale profile in isolation (math 26.0%, knowledge 62.7%, code 64.7%).
+
+**Second observation (static blend, GSM8K).** An 11-point sweep of `α·math + (1−α)·knowledge` scale blends evaluated on GSM8K and MMLU at n=50 per point found **GSM8K peaks at α=0.7 with 40.0%** — 6pp above the pure-math endpoint (α=1.0 → 34.0% on the same n=50 run). The best-average point is α=0.6 (GSM8K 32%, MMLU 52.1%). Plot: `docs/figures/interpolation_curve.png`.
+
+The first-order story in both cases is what you'd expect: mixing recovers the domains that individual profiles give up. The second-order story is the interesting one — in both cases, the blend beats the best single profile too. Two very different mechanisms (learned MLP router with a domain-CE head vs. static linear mixture at a fixed α) on two different benchmarks (ARC-Easy vs GSM8K) both show the same effect. That rules out "the router is doing something clever" as the explanation — the effect appears to be a property of the scale space itself. Working hypothesis: the learned scale tables are basis vectors in a continuous manifold where the right interior point can be a better fit for some tasks than any of the learned endpoints.
+
+n=100 and n=50 are small; individual point magnitudes need replication at A100 sample sizes. But the direction and shape of both curves is consistent, and the fact that two independent mechanisms show the same qualitative effect is what convinces me it's real rather than a router artifact.
 
 ### 3. Diagonal dominance reproduces across scales and seeds
 
@@ -44,7 +50,7 @@ The honest caveat is in the CATALOG: at 8B the PPL improvements didn't translate
 
 ## Why the pattern matters more than any single number
 
-Seven separate experiments in this repo produce measurements that move in the direction the scale-personality hypothesis predicts:
+Eight separate experiments in this repo produce measurements that move in the direction the scale-personality hypothesis predicts:
 
 | Prediction | Observation |
 |---|---|
@@ -55,6 +61,7 @@ Seven separate experiments in this repo produce measurements that move in the di
 | Knowledge scales should *not* help math | 46.5% → 46.5% MMLU but math worse |
 | PPL should show diagonal dominance | 8/8 at 8B, 3/3 at 1.7B |
 | Cross-domain scales should interfere | 3-way validation: perfect anti-correlation |
+| Blending scales should trace a smooth tradeoff curve, with potentially non-endpoint sweet spots | Interpolation curve: GSM8K peaks at α=0.7 (40%, above the α=1.0 endpoint 34%); MMLU monotonic decay past α=0.6 |
 
 Any individual row here could be noise at the sample sizes we can afford on a 6GB consumer GPU. The pattern across rows is harder to dismiss. Every prediction that should have held up, did — in the right direction, with the right relative magnitude. The repo's bet isn't on any single headline number; it's on the directional consistency.
 

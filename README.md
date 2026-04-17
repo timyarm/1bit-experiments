@@ -111,6 +111,11 @@ modal run experiments/scale-personalities/train_8profiles.py
 
 Models: [Bonsai 8B](https://huggingface.co/prism-ml/Bonsai-8B-unpacked) (scale personalities v1 / 8-profile) · [Bonsai 1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-unpacked) (scale personalities v2 + router) · [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) (QAT + EGGROLL) · [SmolLM2-135M](https://huggingface.co/HuggingFaceTB/SmolLM2-135M) (fast iteration QAT).
 
+## Planned experiments
+
+- [**Safety-scale pilot**](docs/safety-scale-pilot.md) — does the scale-personality mechanism extend from domain (math/code/knowledge) to *policy* (refusal/safety behavior)? Pre-registered plan for a floor+boost architecture with a Pareto sweep of safety-floor weight vs capability. Both outcomes informative — null result bounds the theory; positive result gives modular auditable safety. ~5hr local GPU, not yet executed.
+- [**A100 burst validation**](experiments/CATALOG.md) — GSM8K n=500, MATH-competition OOD, LoRA baseline at matched ~125MB parameter count, 8B v2 recipe replication. The queue that would let the current small-n findings graduate to paper-confidence.
+
 ## Collaboration note
 
 Research collaboration between a human research director (problem selection, pattern recognition, strategic direction, evaluation of intermediate results) and Claude (implementation, experiment execution, literature lookup, code review). Where results have been corrected (TriviaQA n=100 noise, v1 recipe overclaim, MoE strangers claim), those corrections are in the commit history. Full detail: [docs/research-narrative.md](docs/research-narrative.md#collaboration-with-claude).

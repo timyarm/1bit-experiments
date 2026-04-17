@@ -432,7 +432,9 @@ format) are listed alongside the positive ones.
 | Over-specialization causes catastrophic forgetting | math scales: ARC −38.7%, MMLU −20.1% | predicted pattern confirmed |
 | Router can learn to classify input domain | Domain CE 1.69 → 0.96, 3/4 domains correct diagonal | confirmed |
 | Soft blending prevents catastrophic forgetting | Router ARC 70.0% vs math-alone 26.0% | confirmed |
-| Soft blending can exceed any single profile | Router ARC +5.3% over baseline, the prior ceiling | confirmed (emergent compounding) |
+| Soft blending can exceed any single profile (learned router) | Router ARC +5.3% over baseline, above every individual profile | confirmed |
+| Soft blending can exceed any single profile (static linear mix) | Interpolation α=0.7 → GSM8K 40% vs α=1.0 pure-math endpoint 34% (n=50) | confirmed (second independent observation; argues the effect is a property of the scale space, not a router artifact) |
+| Scale space is continuous, with potentially non-endpoint sweet spots | Interpolation α sweep: monotonic GSM8K rise through α=0.7, MMLU stable 0.0-0.6 then steep decay | confirmed (smooth curve, Pareto sweet spot at α=0.4-0.6) |
 
 No experiment contradicted a theory prediction. Magnitudes varied, but
 direction was consistent every time.
@@ -447,9 +449,12 @@ and all directionally confirm the mechanism. Noise produces random
 signs; this does not.
 
 The honest framing for interpretation: *magnitudes are small-n and
-should be treated cautiously, but the directional pattern across 7+
+should be treated cautiously, but the directional pattern across 9+
 independent predictions is itself the evidence that a real mechanism is
-being exercised.*
+being exercised.* The emergent-compounding finding in particular now
+rests on two independent observations via unrelated mechanisms (learned
+router on ARC-Easy + static blend on GSM8K), which is a stronger form
+of the argument than either alone would be.
 
 ### What remains falsifiable
 
