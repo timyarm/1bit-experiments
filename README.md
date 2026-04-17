@@ -10,20 +10,18 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 
 ### The headline number
 
-**A 1.7B binary model with scale personalities scores 40% on GSM8K (0-shot). The same protocol scores ~20% on an unmodified 8B binary model.** A model 4.7× smaller hits 2× the math accuracy by swapping ~125MB of fp16 scale tables. All numbers below are 0-shot, same eval harness, same answer extraction.
+**A 1.7B binary model with scale personalities scores 40% on GSM8K (0-shot). The same protocol on an unmodified 8B binary model scores 17%.** A model 4.7× smaller hits 2.4× the math accuracy by swapping ~125MB of fp16 scale tables. All numbers below are 0-shot, same eval harness, same answer extraction.
 
 ### Model comparison (0-shot GSM8K, our protocol)
 
-| Model | Params | Format | GSM8K (0-shot) | Notes |
-|---|---|---|---|---|
-| Bonsai 1.7B — no training | 1.7B | 1-bit binary | 5.3% | measured, n=150 |
-| Bonsai 8B — no training | 8B | 1-bit binary | ~20% | measured, n=100 |
-| **Bonsai 1.7B + scale personalities** | **1.7B** | **1-bit binary** | **40.0%** | **measured, n=50; blend of math+knowledge scales** |
-| Llama 2 7B | 7B | FP16 | 14.6% | published, 8-shot CoT¹ |
-| Mistral 7B | 7B | FP16 | 52.1% | published, 8-shot CoT¹ |
-| Llama 3 8B | 8B | FP16 | 79.6% | published, 8-shot CoT¹ |
+| Model | Params | Format | GSM8K (0-shot) | MMLU (0-shot) | Notes |
+|---|---|---|---|---|---|
+| Bonsai 1.7B — no training | 1.7B | 1-bit binary | 5.3% | — | measured, n=150 |
+| Bonsai 8B — no training | 8B | 1-bit binary | **17%** | **68.8%** | measured, n=100, this repo |
+| **Bonsai 1.7B + scale personalities** | **1.7B** | **1-bit binary** | **40%** | **41.7%** | **measured, n=50–100, this repo** |
+| Llama 3 8B | 8B | FP16 | 79.6%† | — | published, 8-shot CoT |
 
-¹ *Published FP16 numbers use 8-shot chain-of-thought prompting, not 0-shot. This is a different eval protocol — higher shot counts substantially inflate GSM8K scores (Llama 2 7B goes from ~0% to 14.6% with CoT). A direct 0-shot comparison against FP16 8B on our harness is queued in the [A100 burst plan](docs/a100-burst-plan.md) (run #6). The internal binary comparison (1.7B vs 8B) uses the same protocol and is directly comparable.*
+† *Published FP16 numbers use 8-shot chain-of-thought — a different protocol that substantially inflates scores vs 0-shot. The binary model comparison (1.7B vs 8B) uses the same 0-shot protocol and is directly comparable. A 0-shot FP16 8B eval on our harness is queued in the [A100 burst plan](docs/a100-burst-plan.md) (run #6).*
 
 ### All scale personality findings
 
