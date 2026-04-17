@@ -1,0 +1,22 @@
+{
+  "baseline": {
+    "correct": 24,
+    "total": 100,
+    "accuracy": 0.24
+  },
+  "math": {
+    "correct": 26,
+    "total": 100,
+    "accuracy": 0.26
+  },
+  "knowledge": {
+    "correct": 24,
+    "total": 100,
+    "accuracy": 0.24
+  },
+  "code": {
+    "correct": 22,
+    "total": 100,
+    "accuracy": 0.22
+  }
+}

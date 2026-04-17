@@ -32,7 +32,9 @@ Signs ({-1, +1}) stay fixed as shared routing structure. Scales (fp16, one per 1
 |---------|-------------------|----------|---------|-------|
 | math | GSM8K (n=150) | 5.3% | **28.0%** | **+22.7%** |
 | knowledge | MMLU-Knowledge (n=144) | 43.1% | **46.5%** | +3.4% |
-| code | (MBPP extractor was broken; fix in flight) | — | — | — |
+| code | MBPP (n=100, fixed extractor) | 24.0% | 22.0% | −2.0% (null) |
+
+MBPP honest null: after fixing the code-fence extractor, the code profile is within noise of baseline (and slightly below). Math on MBPP: 26.0% (+2.0%); knowledge flat. CodeSearchNet-Python training distribution didn't transfer to MBPP's task-description → implementation format. Recorded as a negative result — code-profile v2 recipe needs reworked data, not a model-capability win.
 
 **Bonsai 8B v1 recipe (Modal T4):**
 

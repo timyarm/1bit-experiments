@@ -133,6 +133,22 @@ Format per entry: **Date · Experiment · Expectation · Outcome · Conclusion.*
 
 ---
 
+### 2026-04-17 · MBPP Full Re-Eval with Fixed Extractor (n=100)
+
+**Expectation:** Code profile should beat baseline on MBPP now that the extractor isn't throwing the answer away. Math should be flat or slightly better (code-like reasoning leaks). Knowledge should be flat.
+
+**Setup:** Same eval harness as diagnostic but at full n=100 across all four profiles (baseline, math, knowledge, code). Single run, seed-fixed order.
+
+**Outcome:**
+- baseline: 24.0% (24/100)
+- math:     26.0% (+2.0%)
+- knowledge: 24.0% (flat)
+- **code:   22.0% (−2.0%)** — null/slightly negative
+
+**Conclusion:** Honest null result for the code profile on MBPP. Two likely causes, both instructive: (1) **training-distribution mismatch** — CodeSearchNet Python is GitHub function bodies (long, doc-stringed, library-style), MBPP is tight task-description → small-function synthesis; the distribution shift the scales learned doesn't help on the eval format; (2) **tokens that matter are already shared** — unlike GSM8K where math-distribution shift is a big lever, most MBPP correctness tokens are generic Python syntax the baseline already handles. Either way: code profile v2 recipe needs reworked training data (e.g. MBPP/HumanEval-style short-prompt + solution pairs) rather than more epochs on CodeSearchNet. Filed as a negative result, not a failure.
+
+---
+
 ### In Flight / Next
 
 - **Scale interpolation curve.** 11 alpha values blending math↔knowledge scales, plot GSM8K/MMLU tradeoff. Tests whether the personality space is a continuous manifold with sweet spots.
