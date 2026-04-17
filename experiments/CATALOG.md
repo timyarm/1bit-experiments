@@ -216,10 +216,48 @@ Training loss at n=300 was still decreasing monotonically (epoch 1: 2.85 → epo
 
 ---
 
+---
+
+## Experiment 14 — Per-layer α blend sweep (2026-04-17)
+
+**Question:** Does math specialization live in early or late layers? If late layers carry signal (as the activation probe implied), giving late layers math scales should beat giving early layers math scales.
+
+**Setup:** 6 profiles × (GSM8K n=50 + MMLU n=50). No new training — existing math/knowledge scale tables patched per-layer. Bonsai 1.7B local GPU. `eval_layerwise_blend.py`.
+
+| Profile | GSM8K | MMLU | Notes |
+|---|---|---|---|
+| flat_0.7 (control) | 40.0% | 41.7% | Wins on GSM8K |
+| linear_late (knowledge early, math late) | 2.0% | 56.2% | Math collapses completely |
+| linear_early (math early, knowledge late) | 28.0% | 33.3% | Math survives |
+| step_late | 2.0% | 58.3% | Confirms linear_late |
+| step_early | 32.0% | 27.1% | Confirms linear_early |
+| ffn_late (ffn_up/gate top half = math) | 22.0% | 50.0% | Partial fix — softens but doesn't solve |
+
+**Result: Math specialization lives in EARLY layers, not late layers.** Giving late layers math scales destroys GSM8K (2%). Giving early layers math scales preserves it (28-32%). The flat α=0.7 still wins because it doesn't force hard layer boundaries. Late layers carry knowledge/general capability — MMLU spikes to 56-58% when late layers get knowledge scales.
+
+**Contradiction with activation probe:** The probe found late layers are less redundant (2.1% vs 99.6% early), which suggested late layers carry signal. Correct reading: late layers are specialized for *general reasoning and knowledge retrieval*, not domain-specific math encoding. Early layers handle domain recognition (what kind of problem is this?); late layers handle domain completion (how to answer it). The probe measured redundancy, not domain-specificity.
+
+**Implication for #12:** Original plan was to train ffn_up/gate in late layers. This finding corrects that — train ffn_up/gate in *early* layers for math. Direct course correction before burning a training run.
+
+**Implication for safety pilot:** Safety behavior is likely a late-layer phenomenon (how to complete a response, not what kind of problem it is). Safety scale pilot should target late layers.
+
+---
+
+## Experiment 15 — Asymmetric blend sweep (2026-04-17, running)
+
+**Question:** Can a graduated asymmetric blend (early layers higher α, late layers lower α) beat flat_0.7 on both GSM8K and MMLU simultaneously? Informed by Exp 14 finding.
+
+**Setup:** `eval_asymmetric_blend.py`. Two sweeps: (1) alpha grid — early_α ∈ {0.8, 0.9, 1.0} × late_α ∈ {0.3, 0.4, 0.5}, split fixed at layer 12. (2) Crossover sweep — best alpha combo, split layer ∈ {6, 8, 10, 14, 16, 18}. No training. ~50 min.
+
+**Result:** Pending.
+
+---
+
 ### In Flight / Next
 
-- **Scale interpolation curve.** 11 alpha values blending math↔knowledge scales, plot GSM8K/MMLU tradeoff. Tests whether the personality space is a continuous manifold with sweet spots.
-- **Data efficiency curve.** Train math scales on {10, 30, 100, 300} examples, plot GSM8K vs data size. Tests the "data-starved at 150 examples" hypothesis.
+- **Asymmetric blend sweep** — running now. Graduated early/late α to find if flat_0.7 can be beaten on both benchmarks.
+- **Corrected #12: targeted early-layer scale training** — train ffn_up/gate in early layers only (not late, per Exp 14 finding). One training run, local GPU.
+- **Per-layer α blend sweep (follow-up)** — complete. Findings above.
 - **Router interpretability.** Load saved router, analyze routing decisions per token type.
 - **Tighter elastic band sweep (λ=0.3, 0.5).** Does stronger regularization shrink the math-MMLU forgetting tradeoff?
 
@@ -229,6 +267,7 @@ Training loss at n=300 was still decreasing monotonically (epoch 1: 2.85 → epo
 - LoRA baseline comparison at matched parameter count
 - Per-token router V3 (current V2 is sequence-level only due to local VRAM)
 - 8B v2 recipe replication
+- EFI sign unfreeze sweep: top {0.1%, 0.5%, 1%, 2%} signs unfrozen, test if ~29% ceiling is sign-capacity bound
 - Full ablations
 
 ---

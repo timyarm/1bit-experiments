@@ -120,6 +120,29 @@ If both hold, the implication is that scale-only specialization has more room to
 
 **I'm naming this as an implication, not a claim.** The specific test that would license it or falsify it is in [docs/a100-burst-plan.md](a100-burst-plan.md) — the 8B v2 replication (run #4). If v2 produces equal or bigger accuracy lifts at 8B than at 1.7B, the scaling story survives. If it produces smaller lifts at 8B, the 1.7B result is small-model-specific and we correct the framing. Either answer is interesting; the honest framing is that we don't yet know which it is.
 
+### Binary vs. every other format — the stronger version of the claim
+
+The argument above is about scale personalities compounding at larger binary models. There's a second, more aggressive claim worth naming explicitly: **binary with scale personalities may not just be efficient — it may be the superior architecture overall, including against FP16, when you account for what you can do with the compute budget.**
+
+The starting point is PrismML's intelligence density metric — negative log error rate divided by model size in GB. At 8B parameters:
+
+| Format | Intelligence density |
+|---|---|
+| 1-bit binary Bonsai 8B | **1.060** |
+| 1.58-bit ternary Bonsai 8B | 0.803 |
+| Best FP16 competitor (8B range) | 0.052–0.096 |
+
+Binary is 10–20× more intelligence-dense than FP16. That gap means: take the storage budget of one FP16 70B model (~140GB) and fill it with binary instead, and you're running a model with ~10–15× more parameters at matched storage. Scaling laws consistently favor more parameters over higher precision past a threshold — this is the core finding of Microsoft's BitNet work, and it's what the intelligence density gap predicts.
+
+Add scale personalities and the argument compounds further. A fixed storage budget that would fit one FP16 70B specialist now fits:
+- A binary backbone orders of magnitude larger
+- Fifty or more swappable domain personalities at ~125MB each
+- A lightweight router that selects or blends them at inference time
+
+The claim is not that a small binary model beats a large FP16 model. The claim is: **at matched compute and storage budget, binary + scale personalities should outperform a fleet of FP16 specialists** — more total parameters, near-zero routing overhead, and domain specialization that costs 0.8% of parameter storage per personality rather than a full model copy.
+
+**What would falsify this:** the 8B v2 replication failing to show scale personality lift (would suggest the mechanism doesn't scale); or intelligence density degrading at 70B+ binary scale (would suggest the efficiency gap closes). Both are testable. Neither is tested yet. The A100 burst plan is the first step toward the evidence that would license or falsify this claim. I'm stating it here because the mechanism points here, and I'd rather name it honestly than let a reader connect the dots and wonder if we saw it.
+
 ---
 
 ## What I'd read next in this repo
