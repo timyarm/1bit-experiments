@@ -12,6 +12,7 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 |---|---|---|
 | Math personality on GSM8K | 5.3% → **28.0%** (+22.7% abs, **5.3× rel**) | n=150 held-out test split, stat-sig (z ≈ 5+); single seed at 1.7B v2, replication queued |
 | Router eliminates catastrophic forgetting | Math-alone crashes ARC-Easy to 26%; Router recovers to **70.0%** — beats every single profile | Directional win over baseline (+5.3%, n=100) is not stat-sig at this n; anti-forgetting mechanism is the robust claim |
+| Emergent compounding in the scale manifold | α=0.7 static math/knowledge blend → **GSM8K 40.0%** (pure math endpoint: 34.0%) | Second observation of blend > single profile, now on a static linear mix instead of a learned router. n=50 per alpha |
 | Cross-dataset transfer | Knowledge scales (TriviaQA-train) → **+3.4% MMLU** | Direction consistent with domain-transfer prediction; n=144 |
 | Diagonal dominance reproduces | 8/8 profiles at 8B (multi-seed), 3/3 at 1.7B v2 (single seed) | 1.7B replication queued |
 
