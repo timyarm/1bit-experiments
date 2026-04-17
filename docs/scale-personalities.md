@@ -216,10 +216,9 @@ each), MBPP n=100.
   a lot of numerical reasoning).
 - math on MMLU: −20.1% — catastrophic forgetting of general knowledge,
   mirroring the −38.7% ARC-Easy collapse.
-- MBPP: 0.0% across every profile including baseline. Either Bonsai 1.7B
-  native 1-bit genuinely cannot synthesize runnable Python, or the
-  code-extraction heuristic is broken. Not informative either way; needs
-  a separate diagnostic.
+- MBPP: 0.0% across every profile including baseline. Diagnosed as an
+  extraction bug (prompt opens a ```python fence, code is split[0] not
+  split[1]). Fixed in a follow-up run — see "Follow-up 4" below.
 
 ### What this changes
 
@@ -358,6 +357,49 @@ doesn't dominate.
 - Higher DOMAIN_CE_WEIGHT or longer training for sharper diagonal
   dominance. Current code is at three-way tie — could be cleaner.
 
+## Follow-up 4: MBPP fixed-extractor re-eval (2026-04-17)
+
+The MBPP 0% result from Follow-up 2 was diagnosed as an extraction bug:
+the prompt ended with an opening ```` ```python ```` fence, so the
+model's response started with code and terminated with a closing
+```` ``` ````. The extractor was taking the content *after* the first
+``` split (model's self-commentary) instead of *before* (the actual code).
+Fixed extractor: `text.split("```")[0].strip()`. Diagnostic on 10 examples
+jumped from 0/10 to 5/10.
+
+### Full n=100 re-eval
+
+| Profile | MBPP (n=100) | Δ vs baseline |
+|---|---|---|
+| baseline  | 24.0% | — |
+| math      | 26.0% | +2.0% |
+| knowledge | 24.0% | 0.0% |
+| **code**  | 22.0% | **−2.0% (null)** |
+
+### What this says
+
+The code profile is not a capability win on MBPP. Two likely reasons:
+
+1. **Training-distribution mismatch.** CodeSearchNet is long GitHub
+   function bodies with docstrings and library calls; MBPP is tight
+   task-description → small-function synthesis. The scale shift the
+   code profile learned doesn't transfer to the eval format.
+2. **Most MBPP correctness tokens are generic Python.** Unlike GSM8K
+   where math-distribution shift is a big lever on numerical tokens,
+   MBPP success is dominated by common Python syntax the baseline
+   already handles — a smaller effective target for scale
+   specialization.
+
+Filed as an honest null. The code-profile v2 recipe needs reworked
+training data (MBPP/HumanEval-style short-prompt + short-solution pairs)
+before a second attempt; the current recipe is not refuted as a
+mechanism, it's misaimed for this specific eval.
+
+Interesting side note: **math scales gained +2% on MBPP** (within noise
+but directionally positive). Consistent with an earlier crossover
+observation (code scales +2% on GSM8K) — the math/code training
+distributions share more than one would naively assume.
+
 ## Consistency of Directional Evidence
 
 No single experiment in this track has paper-quality n. The largest evals
@@ -373,7 +415,7 @@ individual experiment does.
 |-----------|---------|---------|
 | Domain-specific scale training lowers on-domain PPL | 8B: 8/8 profiles diagonal dominance; 1.7B v2: 3/3 | never failed |
 | Scale training causes cross-domain PPL interference | 3-way validation at 1.7B and 8B | diagonal dominance confirmed |
-| Scale training lifts accuracy on matched benchmark | math → GSM8K +22.7%, knowledge → MMLU +3.4%, code → GSM8K +2.0% crossover | 3/3 positive |
+| Scale training lifts accuracy on matched benchmark | math → GSM8K +22.7%, knowledge → MMLU +3.4%; code → MBPP null (−2.0%, training-distribution mismatch) | 2/3 positive; code refuted for this recipe/data pairing but not for the mechanism |
 | Over-specialization causes catastrophic forgetting | math scales: ARC −38.7%, MMLU −20.1% | predicted pattern confirmed |
 | Router can learn to classify input domain | Domain CE 1.69 → 0.96, 3/4 domains correct diagonal | confirmed |
 | Soft blending prevents catastrophic forgetting | Router ARC 70.0% vs math-alone 26.0% | confirmed |
@@ -400,9 +442,11 @@ being exercised.*
 
 - OOD math (MATH competition) is unmeasured. Could reveal the GSM8K lift
   is format-specific rather than capability-level.
-- MBPP returned 0% across all profiles including baseline (code
-  extraction bug or 1-bit model genuinely can't synthesize Python).
-  Code profile's matched-domain evaluation is therefore unverified.
+- MBPP code profile is a null: after fixing the extraction bug, code
+  profile scored 22% vs baseline 24% on n=100. Training distribution
+  (CodeSearchNet GitHub) doesn't match MBPP format (short task → small
+  function). Code-profile v2 recipe needs reworked data. See
+  Follow-up 4 below.
 - 8B accuracy results used the v1 recipe, not verified at matching
   sample sizes with v2.
 

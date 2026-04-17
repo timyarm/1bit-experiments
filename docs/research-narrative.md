@@ -50,7 +50,7 @@ Seven separate experiments in this repo produce measurements that move in the di
 |---|---|
 | Math scales should help GSM8K | 5.3% → 28.0% |
 | Math scales should hurt letter-answer tasks | ARC-Easy −38.7% |
-| Code scales should help code synthesis | MBPP extractor bug masked it; fixed, re-running |
+| Code scales should help code synthesis | Null after extractor fix (code −2% MBPP); training-data mismatch, not a model refutation |
 | Knowledge scales should cross-transfer from TriviaQA-train to MMLU | +3.4% MMLU |
 | Knowledge scales should *not* help math | 46.5% → 46.5% MMLU but math worse |
 | PPL should show diagonal dominance | 8/8 at 8B, 3/3 at 1.7B |
