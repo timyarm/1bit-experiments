@@ -107,6 +107,21 @@ I mention this directly because the repo won't make sense without it. A solo hum
 
 ---
 
+## Where this points — if the mechanism scales
+
+This section is forward-looking and explicitly unmeasured. I'm writing it to name the hypothesis the current findings imply, not to claim it.
+
+The mechanism as stated so far: fp16 scale tables (~0.8% of parameter bytes) over frozen 1-bit signs carry domain specialization, and the scale space is continuous enough that soft blends of learned tables can outperform any single learned table. Two structural facts about that mechanism suggest it should compound at larger models rather than saturate:
+
+1. **More scale groups per model.** Each 128-weight group gets one fp16 scale. A 70B model has ~40× the scale count of a 1.7B model — more per-profile capacity, not less.
+2. **Late-layer FFN groups carry most of the signal.** The activation probe on Bonsai 8B found 52.5% of weight groups redundant overall but only 2.1% in the last third of the model, with ffn_up/gate as the least-redundant category (44.7%). Larger models have proportionally more late-layer FFN capacity; that's exactly the region the scale-training signal lands on.
+
+If both hold, the implication is that scale-only specialization has more room to work at scale, not less. A 70B 1-bit backbone with ~125MB scale tables per personality would fit ~50 swappable domain experts in ~8GB of scale storage on top of the signs backbone.
+
+**I'm naming this as an implication, not a claim.** The specific test that would license it or falsify it is in [docs/a100-burst-plan.md](a100-burst-plan.md) — the 8B v2 replication (run #4). If v2 produces equal or bigger accuracy lifts at 8B than at 1.7B, the scaling story survives. If it produces smaller lifts at 8B, the 1.7B result is small-model-specific and we correct the framing. Either answer is interesting; the honest framing is that we don't yet know which it is.
+
+---
+
 ## What I'd read next in this repo
 
 If you have 5 minutes: [README](../README.md) (headline table + deep results) and [CATALOG](../experiments/CATALOG.md) (what was tried, in order).
