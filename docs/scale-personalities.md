@@ -409,6 +409,19 @@ benchmarks — every directional prediction the theory makes has been
 confirmed. That pattern itself carries evidential weight that no
 individual experiment does.
 
+**Honest disclosure on this framing:** these predictions are identified
+retrospectively from the experiment log, not pre-registered before the
+experiments ran. A strong version of this argument would be pre-registration
+of predictions + testing them; we don't have that. What's defensible is the
+weaker version: the predictions listed below are ones the mechanism
+(scale-specialization of fp16 intensity tables over frozen signs) directly
+entails, the tests listed are the ones we ran, and where the mechanism
+predicts a direction we went out of our way to also find the disconfirming
+cases (catastrophic forgetting, MBPP code null). The list isn't cherry-picked
+for hits; the negative predictions (math scales must hurt letter-answer tasks,
+code scales on CodeSearchNet-style data won't transfer to MBPP synthesis
+format) are listed alongside the positive ones.
+
 ### Predictions, and where they were tested
 
 | Prediction | Test(s) | Outcome |

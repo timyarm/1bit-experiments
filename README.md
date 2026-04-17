@@ -10,12 +10,16 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 
 | Finding | Number | Notes |
 |---|---|---|
-| Math personality on GSM8K | 5.3% → **28.0%** (+22.7% abs, **5.3× rel**) | n=150 held-out test split |
-| Router eliminates catastrophic forgetting | Math-alone ARC-Easy 26% → Router **70.0%** (+5.3% over baseline) | Soft blending beats every single profile |
-| Cross-dataset transfer | Knowledge scales (TriviaQA-train) → **+3.4% MMLU** | True OOD lift |
-| Diagonal dominance reproduces | 8/8 profiles at 8B, 3/3 at 1.7B | Multiple seeds |
+| Math personality on GSM8K | 5.3% → **28.0%** (+22.7% abs, **5.3× rel**) | n=150 held-out test split, stat-sig (z ≈ 5+); single seed at 1.7B v2, replication queued |
+| Router eliminates catastrophic forgetting | Math-alone crashes ARC-Easy to 26%; Router recovers to **70.0%** — beats every single profile | Directional win over baseline (+5.3%, n=100) is not stat-sig at this n; anti-forgetting mechanism is the robust claim |
+| Cross-dataset transfer | Knowledge scales (TriviaQA-train) → **+3.4% MMLU** | Direction consistent with domain-transfer prediction; n=144 |
+| Diagonal dominance reproduces | 8/8 profiles at 8B (multi-seed), 3/3 at 1.7B v2 (single seed) | 1.7B replication queued |
 
-**Honest caveat up front:** PPL improvements don't always translate to accuracy lift. At 8B the reasoning profile had best math PPL (3.28) but worst GSM8K accuracy (8%). The math 5.3× at 1.7B came from the v2 recipe (token-weighted loss, elastic band reg, AdamW 1e-4), not the v1 recipe used for 8B PPL. Both are in the repo so the trajectory is legible.
+**Honest caveats up front:**
+
+1. **PPL ≠ accuracy for reasoning.** At 8B the reasoning profile had best math PPL (3.28) but worst GSM8K accuracy (8%). The math 5.3× at 1.7B came from the v2 recipe (token-weighted loss, elastic band reg, AdamW 1e-4), not the v1 recipe used for 8B PPL. Both are in the repo so the trajectory is legible.
+2. **Sample sizes reflect a 6GB consumer GPU.** Headline benchmarks are n=100–150. Individual-row statistical significance is mixed: math GSM8K +22.7% is solidly significant (z ≈ 5+); the +5.3% ARC-Easy delta is directional, not significant at n=100. The strongest evidence is the pattern *across* rows (see [consistency of evidence](docs/scale-personalities.md#consistency-of-directional-evidence)), not any single number. A100 re-runs at n=400+ are queued.
+3. **No LoRA baseline at matched parameter count yet.** The natural first question — "how does scale-only training compare to a LoRA adapter at ~125MB?" — is queued for the A100 burst. Calling it out because its absence would otherwise read as avoidance rather than budget.
 
 ## Start here
 
