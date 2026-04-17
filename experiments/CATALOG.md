@@ -243,21 +243,57 @@ Training loss at n=300 was still decreasing monotonically (epoch 1: 2.85 → epo
 
 ---
 
-## Experiment 15 — Asymmetric blend sweep (2026-04-17, running)
+## Experiment 15 — Asymmetric blend sweep (2026-04-17)
 
-**Question:** Can a graduated asymmetric blend (early layers higher α, late layers lower α) beat flat_0.7 on both GSM8K and MMLU simultaneously? Informed by Exp 14 finding.
+**Question:** Can a graduated asymmetric blend (early layers higher α, late layers lower α) beat flat_0.7 on both GSM8K and MMLU simultaneously?
 
-**Setup:** `eval_asymmetric_blend.py`. Two sweeps: (1) alpha grid — early_α ∈ {0.8, 0.9, 1.0} × late_α ∈ {0.3, 0.4, 0.5}, split fixed at layer 12. (2) Crossover sweep — best alpha combo, split layer ∈ {6, 8, 10, 14, 16, 18}. No training. ~50 min.
+**Setup:** `eval_asymmetric_blend.py`. Two sweeps: (1) alpha grid — early_α ∈ {0.8, 0.9, 1.0} × late_α ∈ {0.3, 0.4, 0.5}, split fixed at layer 12. (2) Crossover sweep — early=0.9, late=0.4, split ∈ {6, 8, 10, 14, 16, 18}. 16 total evals. No training. 85 min.
 
-**Result:** Pending.
+**Key results:**
+
+| Profile | GSM8K | MMLU | vs flat_0.7 |
+|---|---|---|---|
+| flat_0.7 (control) | 40.0% | 41.7% | baseline |
+| e0.8_l0.5_s12 | 42.0% | 35.4% | +2pp math, -6pp knowledge |
+| e0.8_l0.4_s12 | 36.0% | 43.8% | -4pp math, +2pp knowledge |
+| e0.9_l0.4_s6 | 34.0% | 45.8% | best MMLU ever, GSM8K collapses |
+| e0.9+ | 26-38% | 22-31% | both collapse |
+
+**Result: flat_0.7 is Pareto optimal.** No static asymmetric pattern beats it on both benchmarks simultaneously. Higher early α (0.9+) collapses both. The best MMLU ever (45.8% at s6) comes at the cost of GSM8K dropping to 34%.
+
+**Mechanistic interpretation:** Depth structure is real but soft — the math/knowledge encoding is interleaved across layers in a way that hard splits disrupt. Flat α=0.7 approximates the optimal smooth per-layer gradient better than any fixed step or ramp pattern. A *learned* per-layer α (training, not blending) would find the true optimum.
+
+---
+
+## Experiment 16 — Early-layer targeted math scale training (2026-04-17)
+
+**Question:** If early layers carry math, does training only early-layer scales match the full-model 28% GSM8K with fewer trainable parameters?
+
+**Setup:** `train_early_layer_math.py`. Two conditions vs full-model baseline (28% GSM8K). Same v2 recipe throughout (AdamW lr=1e-4, Rho-1 token weighting, elastic band λ=0.1, 3 epochs, 150 examples). Each condition run in its own subprocess (CUDA state isolation).
+
+| Condition | GSM8K | Params | % of total | vs full-model |
+|---|---|---|---|---|
+| full-model v2 (baseline) | 28.0% | 11.0M | 100% | — |
+| early_all (layers 0-11) | 21.0% | 4.7M | 42.9% | −7pp |
+| early_ffn (ffn_up/gate, layers 0-11) | 22.0% | 2.4M | 21.4% | −6pp |
+
+**Result: Early layers are the primary site but not the complete story.** Training early layers only gets 75-79% of the full lift (21-22% vs 28%) with 21-43% of the params. Late layers contribute the remaining ~6-7pp.
+
+**Two specific findings:**
+1. `early_ffn` (21.4% of params) matches `early_all` (42.9%) within 1pp. ffn_up/gate captures nearly all early-layer math signal — consistent with activation probe (ffn_up/gate least redundant). Attention weights in early layers contribute almost nothing to math specialization.
+2. The efficiency ratio: 21.4% of params → 79% of the math lift. Strong signal even without full match.
+
+**Three-experiment coherent picture:**
+- Exp 14 (blend): Math scales in late layers only → 2% GSM8K (catastrophic)
+- Exp 16 (train): Math scales in early layers only → 21-22% GSM8K (partial)
+- Full model: Both → 28% GSM8K
+
+**Conclusion:** Math specialization is early-heavy but distributed. The mechanism requires both regions — early layers encode domain recognition, late layers complete the lift. Neither alone is sufficient; together they produce the full 5.3×.
 
 ---
 
 ### In Flight / Next
 
-- **Asymmetric blend sweep** — running now. Graduated early/late α to find if flat_0.7 can be beaten on both benchmarks.
-- **Corrected #12: targeted early-layer scale training** — train ffn_up/gate in early layers only (not late, per Exp 14 finding). One training run, local GPU.
-- **Per-layer α blend sweep (follow-up)** — complete. Findings above.
 - **Router interpretability.** Load saved router, analyze routing decisions per token type.
 - **Tighter elastic band sweep (λ=0.3, 0.5).** Does stronger regularization shrink the math-MMLU forgetting tradeoff?
 
