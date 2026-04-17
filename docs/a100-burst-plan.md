@@ -66,6 +66,24 @@ Queued in priority order, with the rationale for each.
 
 **Budget.** ~2hr train + ~1hr eval = ~3 A100-hrs, $6.
 
+## 6. FP16 8B 0-shot baseline (same protocol as ours)
+
+**Why sixth.** Every published GSM8K number for FP16 8B models uses 8-shot chain-of-thought, which is not comparable to our 0-shot eval. Before claiming "1.7B binary + scale personalities beats 8B FP16 on math," we need Llama 3 8B (or equivalent) run through our exact same harness: 0-shot, same prompt format, same answer extraction.
+
+**Setup.** Load Llama 3 8B (or Llama 3.1 8B) via llama.cpp GGUF. Run our standard eval: GSM8K n=500 (same as run #1), MMLU n=300. Same `"Question: {q}\nAnswer:"` prompt, same number extraction.
+
+**What it proves.** Either our 0-shot 40% on 1.7B binary beats 0-shot FP16 8B (strong claim, directly licenses the "smaller binary beats larger FP16" headline), or FP16 8B 0-shot is higher (expected — but we now know the gap and can frame it honestly). Either way the comparison is on a fair ruler.
+
+**Budget.** ~1.5hr eval = ~3 A100-hrs. Call it $6.
+
+## 7. CoT-data math personality (does scale training encode reasoning or format?)
+
+**Why seventh.** Our math scales were trained on GSM8K data which includes the answer format but not full verbose chain-of-thought. The open question: are the scales encoding genuine mathematical reasoning capacity, or primarily learning the output format? Training on CoT-rich data (explicit step-by-step solutions) and evaluating 0-shot would test whether the scales can bake in reasoning style rather than just answer format. If CoT-trained scales produce CoT-style output without prompting, it's weight-level reasoning, not format learning.
+
+**Setup.** Train math scales on GSM8K train with full CoT solutions (already in the dataset's "answer" field). Same v2 recipe. Eval 0-shot on GSM8K test n=500. Compare to standard math scales (same eval). Also compare CoT prompting on baseline vs CoT prompting on scale-trained model — if scales compound with CoT prompting, reasoning capacity is real.
+
+**Budget.** ~1hr train + ~2hr eval = ~3 A100-hrs. Call it $6.
+
 ## Total budget
 
 | Run | A100-hrs | Est $ |
@@ -75,7 +93,9 @@ Queued in priority order, with the rationale for each.
 | 3. Router n=400 + domain evals | 3.5 | $7 |
 | 4. 8B v2 replication | 5 | $10 |
 | 5. Data efficiency (conditional) | 3 | $6 |
-| **Total** | **~19.5** | **~$39** |
+| 6. FP16 8B 0-shot baseline (fair comparison) | 3 | $6 |
+| 7. CoT-data math personality | 3 | $6 |
+| **Total** | **~25.5** | **~$51** |
 
 Modal A100-80GB is ~$2/hr effective. Fits cleanly in the $30-50 budget.
 

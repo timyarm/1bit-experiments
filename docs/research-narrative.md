@@ -145,6 +145,41 @@ The claim is not that a small binary model beats a large FP16 model. The claim i
 
 ---
 
+## How our numbers compare to other models
+
+This section documents where the scale personality results sit relative to published benchmarks. The comparison requires care because evaluation protocols differ significantly.
+
+### Our evaluation protocol
+
+All numbers in this repo use **0-shot, no chain-of-thought** evaluation. The prompt is `"Question: {q}\nAnswer:"` and we extract the last number from the model's response. No worked examples, no reasoning trace prompt.
+
+### The numbers
+
+| Model | Format | GSM8K | Protocol | Source |
+|---|---|---|---|---|
+| Bonsai 1.7B (no training) | 1-bit binary | 5.3% | 0-shot, ours | measured |
+| Bonsai 8B (no training) | 1-bit binary | ~20% | 0-shot, ours | measured |
+| **Bonsai 1.7B + scale personalities** | **1-bit binary** | **40.0%** | **0-shot, ours** | **measured** |
+| Llama 2 7B | FP16 | ~0–14% | 8-shot CoT | Meta paper |
+| Mistral 7B | FP16 | ~35–47% | varies | published |
+| Llama 3 8B | FP16 | 79.6% | 8-shot CoT | Meta paper |
+
+### What the comparison shows — and what it doesn't
+
+**The clean internal comparison:** Bonsai 1.7B + scale personalities (40%) beats the raw Bonsai 8B baseline (~20%) by 2× on math, using a model 4.7× smaller. Both measured with the same 0-shot protocol on the same harness. This comparison is valid.
+
+**The FP16 comparison is methodology-dependent.** The 79.6% for Llama 3 8B uses 8-shot chain-of-thought — the model is given 8 worked examples before each question, which significantly inflates scores versus 0-shot. This is not a fair comparison to our 0-shot numbers. 0-shot GSM8K for FP16 8B models is substantially lower; published 0-shot numbers are hard to find because most labs report the more flattering few-shot figure.
+
+**What a fair FP16 comparison would require:** Running Llama 3 8B through our same 0-shot harness and comparing directly. This is queued in the A100 burst plan (run #6). Until that number exists, the FP16 comparison should be stated as "pending same-protocol eval" rather than using the published 8-shot figures.
+
+### The chain-of-thought question
+
+The gap between our 0-shot 40% and Llama 3's 8-shot 79.6% raises a natural question: how much of that gap is reasoning capacity, and how much is just CoT prompting? The honest answer is we don't know yet, but the framing matters.
+
+If scale personalities encode genuine mathematical understanding (not just output format), then CoT prompting on top of scale-trained scales should compound — the model reasons better AND gets the CoT scaffold. If scale personalities are primarily format learning (recognizing the GSM8K prompt structure), CoT adds less. This is a testable hypothesis: does CoT prompting improve our scale-personality model by more than it improves the baseline? If yes, the scales improved reasoning capacity. If no, they improved format recognition. The A100 run is the right place to test this cleanly.
+
+---
+
 ## What I'd read next in this repo
 
 If you have 5 minutes: [README](../README.md) (headline table + deep results) and [CATALOG](../experiments/CATALOG.md) (what was tried, in order).
