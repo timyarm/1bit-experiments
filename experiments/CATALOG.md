@@ -189,7 +189,7 @@ Best-average point: α = 0.6 (GSM8K 32%, MMLU 52.1%). Plot: [docs/figures/interp
 
 **Expectation:** Probe whether the 150-example training set used for the headline GSM8K 5.3× result is data-starved or saturated. Train math scales on progressively larger datasets {10, 30, 100, 300} and measure GSM8K n=100 at each. If the curve is still rising at 300 → n=150 is under-trained. If it plateaus earlier → 150 is past the elbow.
 
-**Setup:** v2 recipe (AdamW 1e-4, Rho-1 token weighting, elastic band reg, seq 256, 3 epochs), identical to the scale_v2_proper.py run that produced the 28% headline, varying only the number of training examples. Each n trained as an isolated python subprocess after an earlier "CUDA error: unknown error" from in-process back-to-back trainings turned out to be residual GPU state. n=100 crashed at first backward() across two retries; left incomplete.
+**Setup:** v2 recipe (AdamW 1e-4, Rho-1 token weighting, elastic band reg, seq 256, 3 epochs), identical to the scale_v2_proper.py run that produced the 28% headline, varying only the number of training examples. Each n trained as an isolated python subprocess after an earlier "CUDA error: unknown error" from in-process back-to-back trainings turned out to be residual GPU state. **n=100 crashed at first backward() across three attempts** (fresh subprocess each time), each with the same identical shuffled mix (seed=42, 70 math + 30 diverse) — specific data shuffle triggers a reproducible CUDA kernel issue on the GTX 1660 Super. n=10, 30, 300 all succeeded on the same hardware with the same script; the failure is specific to the n=100 mix. Left as a documented gap rather than forcing a different seed (would break apples-to-apples with the other points).
 
 **Outcome:**
 
