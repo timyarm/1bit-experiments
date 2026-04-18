@@ -140,14 +140,16 @@ def get_data():
 
 
 def rank_signs_by_gradient(model, tokenizer, texts, PackedBitLinear):
-    """Single backward pass to rank all signs by |grad_w * scale| magnitude."""
-    log.info("  Ranking signs by gradient magnitude (1 pass)...")
+    """Rank sign GROUPS by |grad_scale| — kept at group level to avoid OOM.
+    All signs in a group share the same importance, so per-sign expansion
+    wastes 128× RAM (820M floats = 3.2GB) with no new information."""
+    log.info("  Ranking signs by gradient magnitude (1 pass, group level)...")
     model.train()
 
-    # Accumulate sign importance across a few examples
-    sign_importance = {}  # module_id → tensor of importance scores
+    # Group-level importance only — [n_groups] per layer, not [out_f, in_f]
+    sign_importance = {}  # name → [n_groups] cpu tensor
 
-    for i, text in enumerate(texts[:20]):  # 20 examples for ranking
+    for i, text in enumerate(texts[:20]):
         tokens = tokenizer(text, return_tensors="pt", truncation=True,
                            max_length=MAX_LEN).to(DEVICE)
         if tokens.input_ids.shape[1] < 10: continue
@@ -166,11 +168,7 @@ def rank_signs_by_gradient(model, tokenizer, texts, PackedBitLinear):
         for name, module in model.named_modules():
             if isinstance(module, PackedBitLinear):
                 if module.scales.grad is not None:
-                    gs = module.group_size
-                    out_f, in_f = module.out_features, module.in_features
-                    # Sign importance = |scale_grad| expanded to per-weight
-                    # Proxy: how much does each group's scale want to move?
-                    imp = module.scales.grad.abs().flatten().repeat_interleave(gs).view(out_f, in_f)
+                    imp = module.scales.grad.abs().flatten()  # [n_groups] only
                     if name not in sign_importance:
                         sign_importance[name] = imp.detach().cpu()
                     else:
@@ -182,60 +180,63 @@ def rank_signs_by_gradient(model, tokenizer, texts, PackedBitLinear):
         if i % 5 == 0:
             log.info(f"    ranking step {i+1}/20")
 
-    # Vectorized top-K selection — avoid Python loop over 800M items
+    # Vectorized top-K GROUP selection (~6.4M groups = 25MB, not 820M signs = 3.2GB)
     total_signs = sum(m.signs.numel() for m in model.modules()
                       if isinstance(m, PackedBitLinear))
-    k = int(total_signs * K_PERCENT / 100)
+    total_groups = sum(m.scales.numel() for m in model.modules()
+                       if isinstance(m, PackedBitLinear))
+    k_groups = max(1, int(total_groups * K_PERCENT / 100))
 
-    # Concatenate all importances, track layer boundaries
-    layer_names_ordered = list(sign_importance.keys())
-    layer_flats = [sign_importance[n].flatten().numpy() for n in layer_names_ordered]
-    layer_sizes = [len(f) for f in layer_flats]
-    all_imp = np.concatenate(layer_flats)
+    layer_names = list(sign_importance.keys())
+    layer_imps = [sign_importance[n].numpy() for n in layer_names]
+    layer_sizes = [len(f) for f in layer_imps]
+    all_imp = np.concatenate(layer_imps)  # [total_groups]
 
-    # argpartition is O(n) vs full sort O(n log n) — critical for 800M elements
-    top_k_global = np.argpartition(all_imp, -k)[-k:]
+    top_k_global = np.argpartition(all_imp, -k_groups)[-k_groups:]
 
-    # Rebuild (importance, name, flat_idx) from global indices
     offsets = np.cumsum([0] + layer_sizes[:-1])
     top_k = []
     for g_idx in top_k_global:
-        layer_i = np.searchsorted(offsets, g_idx, side='right') - 1
-        local_idx = int(g_idx - offsets[layer_i])
-        top_k.append((float(all_imp[g_idx]), layer_names_ordered[layer_i], local_idx))
+        layer_i = int(np.searchsorted(offsets, g_idx, side='right') - 1)
+        group_local = int(g_idx - offsets[layer_i])
+        top_k.append((float(all_imp[g_idx]), layer_names[layer_i], group_local))
 
-    log.info(f"  Total signs: {total_signs:,}")
-    log.info(f"  Unfreezing top {K_PERCENT}% = {k:,} signs")
+    log.info(f"  Total signs: {total_signs:,} in {total_groups:,} groups")
+    log.info(f"  Unfreezing top {K_PERCENT}% = {k_groups:,} groups ≈ {k_groups*128:,} signs")
     return top_k, sign_importance
 
 
 def unfreeze_top_signs(model, top_k_info, PackedBitLinear):
-    """Convert top-K sign positions to trainable float parameters."""
-    # Group selected indices by module
-    module_indices = {}
-    for importance, name, flat_idx in top_k_info:
-        if name not in module_indices:
-            module_indices[name] = []
-        module_indices[name].append(flat_idx)
+    """Convert top-K group positions to trainable float sign parameters.
+    top_k_info contains (importance, name, group_local_idx) triples."""
+    module_group_indices = {}
+    for importance, name, group_local in top_k_info:
+        module_group_indices.setdefault(name, []).append(group_local)
 
-    # For each module with selected signs, create sparse sign params
     sign_params = []
     module_sign_params = {}
 
     for name, module in model.named_modules():
         if not isinstance(module, PackedBitLinear): continue
-        if name not in module_indices: continue
+        if name not in module_group_indices: continue
 
-        indices = torch.tensor(module_indices[name], dtype=torch.long)
+        gs = module.group_size
+        n_signs = module.signs.numel()
+        group_arr = np.array(module_group_indices[name], dtype=np.int64)
+
+        # Vectorized group→sign expansion
+        sign_idx = (group_arr[:, None] * gs + np.arange(gs, dtype=np.int64)[None, :]).flatten()
+        sign_idx = sign_idx[sign_idx < n_signs]  # clip to valid range
+        indices = torch.from_numpy(sign_idx)
+
         flat_signs = module.signs.flatten().float()
-
-        # Create a parameter just for selected indices
         selected_vals = flat_signs[indices].detach()
         sign_param = nn.Parameter(selected_vals.to(DEVICE))
         sign_params.append(sign_param)
         module_sign_params[name] = (module, indices, sign_param)
 
-    log.info(f"  Created {len(sign_params)} sign parameter tensors")
+    total_unfrozen = sum(p.numel() for p in sign_params)
+    log.info(f"  Created {len(sign_params)} sign parameter tensors ({total_unfrozen:,} signs, {total_unfrozen*4/1e6:.1f}MB fp32)")
     return sign_params, module_sign_params
 
 
