@@ -449,3 +449,40 @@ Seeing these in the commit history is part of the point. The research is honest 
 **Verdict: BELOW standard scales (Δ=−2.0%) — extra expressivity not useful.**
 
 **Conclusion:** The symmetry measurement explains the null result mechanistically. Bonsai's QAT process produces near-perfectly symmetric weight groups — the sign-conditional hypothesis assumed asymmetry that doesn't exist. Doubling scale parameters adds optimization noise (more parameters to navigate) without adding representational capacity (because the asymmetry the extra params would capture is ~0). This rules out fine-grained sign-level magnitude differentiation as a direction. Standard one-scale-per-128-group appears to be the right granularity for this model family.
+
+---
+
+## Experiment 22 — EFI Sign Unfreeze (2026-04-18)
+
+**Hypothesis:** Scale training has saturated the continuous parameter space of the frozen sign structure. If the routing structure itself (signs) is the bottleneck, selectively unfreezing the top 1% of signs under maximum gradient pressure and training them with SGD should push past the 28% GSM8K ceiling.
+
+**Setup:**
+- Model: Bonsai 1.7B (PackedBitLinear)
+- Ranking pass: 20 backward passes, accumulate |grad_scale| per group (group-level, not per-sign — 25MB vs 3.2GB)
+- Top 1% of groups unfrozen → 14,092,800 signs (56MB fp32) as nn.Parameters
+- Dual optimizer: AdamW lr=1e-4 for scales, SGD lr=1e-3 for sign params
+- Same v2 recipe: 3 epochs, 150 examples, top-60% token weighting, elastic band λ=0.1
+- After training: signs rebinarized to {-1,+1} → zero inference overhead
+- Eval: GSM8K test n=100, 0-shot, greedy
+
+**Results:**
+
+| Method | GSM8K | Params | Notes |
+|--------|-------|--------|-------|
+| No training (baseline) | 5.3% | — | — |
+| LoRA rank=16 (Exp 19) | 25.0% | 70MB | — |
+| EFI K=1% signs | **27.0%** | ~100MB train | sign flips + scales |
+| Standard scales (Exp 7) | **28.0%** | 22MB | scales only |
+| Scale blend flat_0.7 (Exp 10) | **40.0%** | ~0MB extra | blend |
+
+**Implementation notes:**
+- Three OOM variants fixed: (1) lm_head not frozen before ranking → 32000×2048 grad OOM; (2) per-sign accumulation storing 3.2GB → replaced with per-group 25MB; (3) Python loop over 820M items → `np.argpartition`
+- Sign flip rate: measured after training to confirm signs actually changed polarity
+
+**Verdict: MATCHES scale-only within noise (Δ=−1.0%) — sign capacity is not the bottleneck.**
+
+**Conclusion:** Unfreezing 1% of signs and training them alongside scales produces 27.0% — statistically indistinguishable from scale-only at 28.0%. This rules out sign-routing capacity as the bottleneck for the 28% ceiling on Bonsai 1.7B.
+
+The convergent finding across Exp 19 (LoRA), 20 (sign stability), 21 (sign-conditional), and 22 (EFI): the scale personality mechanism is already near-optimal for this model and data regime. Scales are the only movable part; the signs are correctly committed; the ceiling is set by the model's capacity and the training data, not by the parameter representation.
+
+The path past 28% is: (a) blend recipes (40% confirmed in Exp 10 via knowledge+math blend), (b) more/better training data, or (c) models with math pre-baked into signs from QAT (Qwen2.5-Math, DeepSeek-Math). Sign manipulation post-hoc doesn't help.

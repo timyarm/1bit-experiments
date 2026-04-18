@@ -236,7 +236,13 @@ The pattern across Exp 20 and 21 is consistent: Bonsai's sign structure is deepl
 
 If sign structure is committed but inert relative to a given domain, the next test is whether *selectively changing* the most gradient-pressured signs can push past the 28% scale ceiling. This is the EFI (Expected Flip Improvement) hypothesis: rank all signs by |grad × scale|, unfreeze the top 1% (the ones under maximum optimization pressure for math), train them with SGD alongside the normal scale training, then rebinarize to {-1,+1} at inference.
 
-The experimental design addresses the core question cleanly: if EFI beats 28%, sign capacity is the bottleneck and the next question is the optimal K%. If EFI doesn't beat 28%, scales have already captured all the continuous degrees of freedom available without changing the routing structure — and the 60% ceiling requires models with math baked into the signs from pre-training (Qwen2.5-Math, DeepSeek-Math). The result will be added here when the run completes.
+The experimental design addresses the core question cleanly: if EFI beats 28%, sign capacity is the bottleneck and the next question is the optimal K%. If EFI doesn't beat 28%, scales have already captured all the continuous degrees of freedom available without changing the routing structure.
+
+**Result: 27.0% GSM8K — matches scale-only (28%) within noise.**
+
+EFI adds 14M sign parameters (56MB fp32) on top of the normal scale training. The result is statistically indistinguishable from scales alone. Sign capacity is not the bottleneck.
+
+The convergent picture from Exp 19–22: the scale personality mechanism is operating near optimally. Scales are the movable parts, signs are correctly committed, and the 28% ceiling on Bonsai 1.7B under this recipe is a data/model capacity ceiling, not a parameter representation ceiling. The 40% result came from blend recipes (math × knowledge), not from changing the weight structure. The 60% ceiling observed in math-specialist models (Qwen2.5-Math, DeepSeek-Math) reflects math baked into the signs from QAT — not achievable by post-hoc sign manipulation on a general pre-trained model.
 
 ---
 
