@@ -182,18 +182,27 @@ def rank_signs_by_gradient(model, tokenizer, texts, PackedBitLinear):
         if i % 5 == 0:
             log.info(f"    ranking step {i+1}/20")
 
-    # Flatten all importance scores with location info
-    all_scores = []  # (importance, module_name, flat_idx)
-    for name, imp in sign_importance.items():
-        flat = imp.flatten()
-        for idx in range(len(flat)):
-            all_scores.append((flat[idx].item(), name, idx))
-
-    all_scores.sort(key=lambda x: -x[0])
+    # Vectorized top-K selection — avoid Python loop over 800M items
     total_signs = sum(m.signs.numel() for m in model.modules()
                       if isinstance(m, PackedBitLinear))
     k = int(total_signs * K_PERCENT / 100)
-    top_k = all_scores[:k]
+
+    # Concatenate all importances, track layer boundaries
+    layer_names_ordered = list(sign_importance.keys())
+    layer_flats = [sign_importance[n].flatten().numpy() for n in layer_names_ordered]
+    layer_sizes = [len(f) for f in layer_flats]
+    all_imp = np.concatenate(layer_flats)
+
+    # argpartition is O(n) vs full sort O(n log n) — critical for 800M elements
+    top_k_global = np.argpartition(all_imp, -k)[-k:]
+
+    # Rebuild (importance, name, flat_idx) from global indices
+    offsets = np.cumsum([0] + layer_sizes[:-1])
+    top_k = []
+    for g_idx in top_k_global:
+        layer_i = np.searchsorted(offsets, g_idx, side='right') - 1
+        local_idx = int(g_idx - offsets[layer_i])
+        top_k.append((float(all_imp[g_idx]), layer_names_ordered[layer_i], local_idx))
 
     log.info(f"  Total signs: {total_signs:,}")
     log.info(f"  Unfreezing top {K_PERCENT}% = {k:,} signs")
