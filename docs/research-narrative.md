@@ -180,6 +180,44 @@ If scale personalities encode genuine mathematical understanding (not just outpu
 
 ---
 
+---
+
+## The LoRA null hypothesis — and why the result matters (2026-04-18)
+
+The single most important validity check for the scale personality thesis is: **does the result require scale structure, or would any adapter at the same parameter count do the same thing?**
+
+We ran this experiment (Exp 19). LoRA rank=16 adapters wrapping every PackedBitLinear in Bonsai 1.7B — same training recipe (AdamW lr=1e-4, Rho-1 top-60%, elastic band λ=0.1, 3 epochs, 150 examples, 70% math). LoRA had **17.4M parameters / 70MB** versus the scale table's **11M parameters / 22MB**. LoRA was given 3× more parameters and the same data.
+
+Result: **LoRA 25.0% GSM8K vs scales 28.0% GSM8K.**
+
+Scales win at one-third the size. The null hypothesis is rejected.
+
+**Why this is mechanistically meaningful, not just empirically convenient:**
+
+Signs in a 1-bit model are frozen {-1, +1} — the routing skeleton of the entire computation graph. LoRA adds low-rank corrections on top of a discrete system: it's trying to build additive fp16 corrections onto weights that are quantized to one bit. The corrections partially cancel the sign structure they're overlaid on. Scales, by contrast, operate on the only degree of freedom the architecture actually has: the per-group magnitude. There's no cancellation because you're not fighting the discreteness — you're modulating it.
+
+The practical corollary compounds this: LoRA must execute a `[batch, seq, rank] × [rank, out]` matmul every forward pass. Scales are baked into the weight reconstruction at inference time — **zero runtime overhead**. Scales win on accuracy, on size, and on inference cost simultaneously.
+
+This is the result that turns the scale personality thesis from an interesting observation into a testable mechanism claim.
+
+---
+
+## Sign stability across depth — what the probe found (2026-04-18)
+
+The progressive freeze hypothesis: when training a 1-bit model natively, signs should crystallize early layers first (input representations stabilize early) and late layers last (task-specific circuits stay plastic longer). If true, a good training curriculum would freeze signs progressively by depth.
+
+We measured this on Bonsai 1.7B by running 50 math training steps with scales training normally but with a backward side-channel computing the "would-be gradient" on each layer's signs — how much each layer's signs *want* to change, per step, without actually changing them.
+
+**Result: uniform stability across depth (late/early ratio = 0.85×).**
+
+No clear depth gradient. Layer 0 is a mild outlier (highest gradient pressure — closest to raw input embeddings, most downstream leverage). Layers 22-27 are slightly quieter than the middle. But the effect is small — the sign structure is globally committed at roughly the same level in every layer.
+
+**What this means:** Bonsai's QAT converged to a globally stable sign configuration, not a depth-progressive one. There's no obvious layer ordering for a progressive freeze curriculum. This rules out depth as the freeze criterion; a native 1-bit training curriculum would need to use per-layer gradient magnitude over time — freezing when a layer's sign gradient drops below a threshold, regardless of where it sits in the depth ordering.
+
+The secondary implication: uniform sign stability across depth is *further evidence* that signs are the permanent skeleton of the model. If any layer's signs were significantly more plastic than others, that would suggest the routing structure wasn't fully settled. Uniform low gradient pressure across all 28 layers is the signal we'd expect if the QAT successfully committed to a discrete routing structure throughout.
+
+---
+
 ## What I'd read next in this repo
 
 If you have 5 minutes: [README](../README.md) (headline table + deep results) and [CATALOG](../experiments/CATALOG.md) (what was tried, in order).
