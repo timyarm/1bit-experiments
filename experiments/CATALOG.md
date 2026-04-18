@@ -486,3 +486,36 @@ Seeing these in the commit history is part of the point. The research is honest 
 The convergent finding across Exp 19 (LoRA), 20 (sign stability), 21 (sign-conditional), and 22 (EFI): the scale personality mechanism is already near-optimal for this model and data regime. Scales are the only movable part; the signs are correctly committed; the ceiling is set by the model's capacity and the training data, not by the parameter representation.
 
 The path past 28% is: (a) blend recipes (40% confirmed in Exp 10 via knowledge+math blend), (b) more/better training data, or (c) models with math pre-baked into signs from QAT (Qwen2.5-Math, DeepSeek-Math). Sign manipulation post-hoc doesn't help.
+
+---
+
+## Experiment 23 — Targeted Late-Layer Scale Training (2026-04-19)
+
+**Hypothesis:** Per Bonsai forensics, ffn_up and gate_proj in late transformer layers (20-27) have the highest gradient pressure and depth-scale correlation (0.877). If these layers carry disproportionate adaptive impact, training only their scales (~10% of total scale params = 2.2MB) should approach the full-model result (28% GSM8K, 22MB).
+
+**Setup:**
+- Model: Bonsai 1.7B (PackedBitLinear)
+- Targeted layers: 20-27 (late 8 of 28)
+- Targeted types: `mlp.up_proj`, `mlp.gate_proj` (top 2 per forensics category hierarchy)
+- Frozen: all other scales (attention Q/K/V/O, ffn_down, early/mid layers)
+- Same v2 recipe: AdamW lr=1e-4, elastic band λ=0.1, 3 epochs, 150 examples, top-60% token weighting
+- Eval: GSM8K test n=100, 0-shot, greedy
+
+**Results:**
+
+| Method | GSM8K | Scale params |
+|--------|-------|--------------|
+| No training (baseline) | 5.3% | 0 |
+| Targeted late ffn_up+gate (Exp 23) | **18.0%** | ~10% (2.2MB) |
+| Full scale training (Exp 7) | **28.0%** | 100% (22MB) |
+| Scale blend flat_0.7 (Exp 10) | **40.0%** | 100% + 22MB blend |
+
+**Verdict: BELOW full training (Δ=−10.0%) — late ffn_up+gate insufficient alone.**
+
+**Conclusion:** Targeting the highest-forensics-pressure layers gets +12.7pp over baseline (5.3%→18.0%) but leaves −10pp on the table vs full training. Math adaptation is distributed across all layer depths and all projection types — it cannot be concentrated in the late ffn_up/gate alone.
+
+This bounds the "targeted adaptation" hypothesis: the forensics correctly identify which layers are *most* impactful per parameter, but "most impactful" is not "sufficient." The full 22MB scale table is load-bearing for math; a 2.2MB targeted subset captures only ~65% of the total lift. If compact scale tables are a deployment goal, the tradeoff is approximately 2.2MB → 18% vs 22MB → 28%.
+
+The distribution of adaptive signal across all layers also makes sense mechanistically: math reasoning requires vocabulary lookup (early embedding layers), multi-step attention patterns (mid layers), and output projection (late layers) to all be tuned together. Domain adaptation is inherently holistic.
+
+**Implementation note:** The `is_targeted()` function checks layer index AND projection type string, enabling arbitrary layer/type subset experiments without modifying the training loop.

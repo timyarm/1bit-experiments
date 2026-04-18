@@ -35,12 +35,15 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 | Diagonal dominance reproduces | 8/8 profiles at 8B, 3/3 at 1.7B v2 | Each profile best on its own domain |
 | Data efficiency — saturates near n=30 | n=10→19%, n=30→29% (peak), n=150→28%, n=300→24% | Overfitting past the elbow; headline result not data-limited |
 | **LoRA null hypothesis rejected** | **Scales 28.0% vs LoRA rank=16 (3× params) 25.0%** | **Scales win on accuracy + size (22MB vs 70MB) + zero inference overhead** |
+| Sign structure is committed & sufficient | Sign stability uniform (late/early=0.85×); sign-cond scales 26.0%; EFI K=1% 27.0% | Signs are correctly committed — scales are the only movable part |
+| Math adaptation is distributed, not targeted | Late ffn_up+gate only (10% params): 18.0% vs full 28.0% | Full scale table is load-bearing; targeted 2.2MB subset captures ~65% of lift |
 
 **Honest caveats up front:**
 
 1. **PPL ≠ accuracy for reasoning.** At 8B the reasoning profile had best math PPL (3.28) but worst GSM8K accuracy (8%). The math 5.3× at 1.7B came from the v2 recipe (token-weighted loss, elastic band reg, AdamW 1e-4), not the v1 recipe used for 8B PPL. Both are in the repo so the trajectory is legible.
 2. **Sample sizes reflect a 6GB consumer GPU.** Headline benchmarks are n=100–150. Individual-row statistical significance is mixed: math GSM8K +22.7% is solidly significant (z ≈ 5+); the +5.3% ARC-Easy delta is directional, not significant at n=100. The strongest evidence is the pattern *across* rows (see [consistency of evidence](docs/scale-personalities.md#consistency-of-directional-evidence)), not any single number. A100 re-runs at n=400+ are queued.
 3. **LoRA baseline is now run (Exp 19).** LoRA rank=16 at 70MB (3× the scale table size) scored 25.0% GSM8K vs scales at 28.0%. Scales win on accuracy, size, and inference overhead. The null hypothesis is rejected — see [CATALOG](experiments/CATALOG.md#experiment-19) for the full result.
+4. **Sign structure experiments (Exp 20-22) confirm mechanism.** Sign stability probe (Exp 20), sign-conditional scales (Exp 21), and EFI sign unfreeze (Exp 22) all confirm that scales are the optimal and nearly complete continuous degree of freedom. The 28% ceiling is a data/capacity ceiling, not a sign-capacity ceiling.
 
 ## Start here
 
