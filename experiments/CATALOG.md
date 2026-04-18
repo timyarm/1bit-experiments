@@ -400,3 +400,52 @@ Seeing these in the commit history is part of the point. The research is honest 
 **Verdict: Scales beat LoRA despite LoRA having 3× more parameters.**
 
 **Conclusion:** Scale tables are not just a parameter-efficient trick — they are the right inductive bias for 1-bit models. Signs encode frozen routing structure; scales are the only continuous degrees of freedom the model has. LoRA tries to add low-rank corrections on top of a discrete system and loses. Scales win on accuracy (+3pp over LoRA), on size (22MB vs 70MB), AND on inference overhead (zero — scales replace at load time, LoRA must execute A/B multiply every forward pass). The scale personality thesis is now validated against its primary null hypothesis.
+
+---
+
+## Experiment 20 — Sign Stability Probe (2026-04-18)
+
+**Hypothesis:** Sign pressure (|grad_sign| per layer) increases with transformer depth — early layers crystallize first, late layers remain plastic longest. If true, progressive freeze (freeze early layers first during QAT) is the right curriculum for native 1-bit training.
+
+**Setup:**
+- Model: Bonsai 1.7B (PackedBitLinear, signs frozen as fp16 buffers)
+- Side-channel measurement: custom `_BitLinearFn.backward` captures `|grad_w| × |scale_expanded|` per layer without making signs trainable (zero VRAM overhead)
+- 50 training steps on GSM8K math examples (only scales train)
+- Per-transformer-layer mean |sign gradient| grouped by depth (0–27)
+
+**Results:**
+- Late/Early ratio: **0.85×** — signs are uniformly crystallized across all 28 layers
+- No progressive freeze gradient by depth
+- All layers show similar sign pressure throughout training
+
+**Verdict: UNIFORM — no depth trend. Progressive freeze hypothesis not supported by gradient signal.**
+
+**Conclusion:** Bonsai's pre-training already crystallized signs uniformly at all depths — there is no natural early→late ordering to exploit. Progressive freeze by depth would be arbitrary, not data-driven. The hypothesis was reasonable (deep layers are usually more task-specific in FP16 models) but doesn't hold for binary models where the sign structure is locked in pre-training. If progressive freeze is ever revisited, it would need a per-layer gradient criterion during training from scratch, not a depth heuristic.
+
+---
+
+## Experiment 21 — Sign-Conditional Scales (2026-04-18)
+
+**Hypothesis:** Each weight group has a separate scale for +1 signs and −1 signs (`scale_pos_g`, `scale_neg_g`). Standard scales use a single absmean per group. If +/− subsets have meaningfully different magnitude distributions, asymmetric scales could express more fine-grained structure and improve accuracy.
+
+**Setup:**
+- Model: Bonsai 1.7B
+- 2× scales per group (scale_pos, scale_neg), initialized from actual pos/neg absmeans
+- Custom `_SignCondBitLinearFn` — recomputes `pos_mask = (signs > 0)` in backward (not saved in ctx, saves ~1.6GB VRAM)
+- Elastic band regularization toward init for both scale_pos and scale_neg
+- Same v2 recipe: AdamW lr=1e-4, 3 epochs, 150 examples, top-60% token weighting
+- Asymmetry analysis: `scale_pos / scale_neg` ratio per group
+
+**Results:**
+
+| Method | GSM8K | Params |
+|--------|-------|--------|
+| No training (baseline) | 5.3% | — |
+| Standard scales (math, Exp 7) | **28.0%** | 11M / 22MB |
+| Sign-conditional scales | **26.0%** | 22M / 44MB |
+
+**Key measurement:** `scale_pos/scale_neg` ratio = **1.0009 (std=0.0005)** — groups are essentially perfectly symmetric. The +1 and −1 weight subsets within each group have nearly identical magnitude distributions.
+
+**Verdict: BELOW standard scales (Δ=−2.0%) — extra expressivity not useful.**
+
+**Conclusion:** The symmetry measurement explains the null result mechanistically. Bonsai's QAT process produces near-perfectly symmetric weight groups — the sign-conditional hypothesis assumed asymmetry that doesn't exist. Doubling scale parameters adds optimization noise (more parameters to navigate) without adding representational capacity (because the asymmetry the extra params would capture is ~0). This rules out fine-grained sign-level magnitude differentiation as a direction. Standard one-scale-per-128-group appears to be the right granularity for this model family.

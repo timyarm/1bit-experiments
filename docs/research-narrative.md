@@ -218,6 +218,28 @@ The secondary implication: uniform sign stability across depth is *further evide
 
 ---
 
+## Sign-conditional scales: ruling out asymmetry (2026-04-18)
+
+After finding that sign stability is uniform across depth, the next question was whether the *structure within groups* held any unexploited information. Standard scales use one fp16 value per 128-weight group — an absmean over all weights in the group, both positive and negative. What if +1 and −1 weights within a group had different typical magnitudes? You could give each sign polarity its own scale (`scale_pos`, `scale_neg`) and double the expressivity at the group level.
+
+Measurement first. Before training anything, we measured the actual `scale_pos/scale_neg` ratio across all weight groups in Bonsai 1.7B.
+
+**Result: mean ratio = 1.0009, std = 0.0005.** The groups are essentially perfectly symmetric. Positive and negative weight subsets within each group have virtually identical magnitude distributions.
+
+This is mechanistically informative. Bonsai's QAT process produces symmetric groups — the absmean scale is already optimal because there's nothing asymmetric to capture. Running the sign-conditional experiment confirmed this directly: 26.0% GSM8K vs 28.0% for standard scales. The extra parameters add optimization noise without adding representational capacity.
+
+The pattern across Exp 20 and 21 is consistent: Bonsai's sign structure is deeply committed and internally symmetric. The QAT process converged to a configuration where signs encode the routing structure completely and the scale is the only remaining degree of freedom. This is exactly the theoretical precondition for scale personalities to work: the signs are load-bearing but inert; the scales are the movable parts.
+
+---
+
+## EFI sign unfreeze — the sign capacity question (2026-04-18)
+
+If sign structure is committed but inert relative to a given domain, the next test is whether *selectively changing* the most gradient-pressured signs can push past the 28% scale ceiling. This is the EFI (Expected Flip Improvement) hypothesis: rank all signs by |grad × scale|, unfreeze the top 1% (the ones under maximum optimization pressure for math), train them with SGD alongside the normal scale training, then rebinarize to {-1,+1} at inference.
+
+The experimental design addresses the core question cleanly: if EFI beats 28%, sign capacity is the bottleneck and the next question is the optimal K%. If EFI doesn't beat 28%, scales have already captured all the continuous degrees of freedom available without changing the routing structure — and the 60% ceiling requires models with math baked into the signs from pre-training (Qwen2.5-Math, DeepSeek-Math). The result will be added here when the run completes.
+
+---
+
 ## What I'd read next in this repo
 
 If you have 5 minutes: [README](../README.md) (headline table + deep results) and [CATALOG](../experiments/CATALOG.md) (what was tried, in order).
