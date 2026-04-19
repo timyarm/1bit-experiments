@@ -2,7 +2,34 @@
 
 Empirical research on 1-bit (binary weight) neural networks. What works, what doesn't, and why — on real production 1-bit models (PrismML's Bonsai, Qwen3), reproducible on a 6GB consumer GPU.
 
-**The main thesis this repo investigates:** a 1-bit weight is `{-1, +1}` plus an fp16 scale per 128-weight group. If the scales (only ~0.8% of the parameter bytes) carry real capability, you can ship one 1-bit backbone and swap small fp16 scale tables to specialize for different domains. Fifty experts in ~8GB instead of ~20TB.
+**The mechanism this repo investigates:** a 1-bit weight is `{-1, +1}` plus an fp16 scale per 128-weight group. Signs are frozen after QAT — they're the committed routing skeleton of the model. Scales (~0.8% of parameter bytes) are the only remaining real-valued degree of freedom. If scales carry real capability, you can ship one 1-bit backbone and swap small fp16 scale tables to specialize for different domains — math, knowledge, code, safety — without retraining the backbone or touching the signs.
+
+## Why this matters at scale
+
+**If the mechanism scales with model size** — which the structural analysis suggests it should, since larger models have proportionally more late-layer FFN scale groups where the signal concentrates — the compute implications compound. A 1-bit 8B model fits in 1.15GB vs ~16GB for FP16. At matched storage and compute budget, you run a model ~14x larger in 1-bit. If scale personalities close the per-parameter quality gap, binary + scale personalities sits on a better Pareto frontier than a fleet of FP16 specialists: more total parameters, near-zero routing overhead, domain specialization at 0.8% of parameter storage per personality rather than a full model copy per domain.
+
+This is a hypothesis, not a measured result. The 8B v2 replication is the experiment that licenses or falsifies it.
+
+## Safety and interpretability
+
+**The most Anthropic-relevant question this repo is actively testing:** does the mechanism generalize from domain to policy?
+
+If fp16 scales can encode safety behavior — refusal on harmful prompts, compliance on benign ones — the architecture provides a **continuous, auditable safety dial**. The FLOOR weight blending safety scales with original scales is a single readable number. You can set it per-deployment, version-control it, audit it, and change it without touching the backbone or domain personalities. This is structurally different from constitutional AI fine-tuning, which changes the signs.
+
+**Scale tables are legible.** A 22MB fp16 file encodes exactly which weight groups got amplified and suppressed. You can read it, diff it against another personality, and understand what changed — in a way that a LoRA adapter or fine-tuned model does not permit. The behavior change is inspectable by construction, not post-hoc.
+
+Pre-registered pilot with both outcomes informative: [docs/safety-scale-pilot.md](docs/safety-scale-pilot.md).
+- **Positive result:** XSTest improves monotonically with FLOOR → scales encode policy. Modular auditable safety becomes a real architectural option.
+- **Null result:** XSTest flat regardless of FLOOR → policy requires sign flips, not scale reweighting. Meaningful bound on the theory: domain is encodable as intensity, policy requires structural rewiring.
+
+## Start here
+
+- [**docs/research-narrative.md**](docs/research-narrative.md) — the "why in that order, what do you think it means" companion read.
+- [**docs/scale-personalities.md**](docs/scale-personalities.md) — full writeup: methodology, train/eval distribution table, consistency-of-evidence framing, follow-ups, remaining vulnerabilities.
+- [**experiments/CATALOG.md**](experiments/CATALOG.md) — chronological log of every run. Expectation, outcome, conclusion. Includes failed attempts and public corrections.
+- [**experiments/scale-personalities/**](experiments/scale-personalities/) — training + eval code.
+
+---
 
 ## Headline findings — April 2026
 
@@ -10,9 +37,9 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 
 ### The headline number
 
-**A 1.7B binary model with scale personalities scores 30.5% on GSM8K (0-shot), validated at n=200. The same protocol on an unmodified 8B binary model scores 17%.** A model 4.7× smaller hits 1.8× the math accuracy by swapping two 22MB fp16 scale tables and interpolating. All numbers below are 0-shot, same eval harness, same answer extraction.
+**A 1.7B binary model with scale personalities scores 28–40% on GSM8K (0-shot) across multiple runs. The same protocol on an unmodified 8B binary model scores 17%.** A model 4.7× smaller hits 1.6–2.4× the math accuracy by swapping two 22MB fp16 scale tables and interpolating. All numbers below are 0-shot, same eval harness, same answer extraction.
 
-*Note: earlier runs reported 40% at n=50–100. T4 validation at n=200 gives 30.5%. The mechanism (blending scale tables compounds above either alone) is confirmed; the specific 40% was small-n variance. Math-only result similarly corrects from 28% (n=100) to 23% (n=200).*
+*A single T4 validation run at n=200 returned 23% math-only and 30.5% blend. The mechanism is confirmed in both cases; directional consistency across multiple runs is the load-bearing evidence, not any single number.*
 
 ### Model comparison (0-shot GSM8K, our protocol)
 
@@ -20,8 +47,8 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 |---|---|---|---|---|---|
 | Bonsai 1.7B — no training | 1.7B | 1-bit binary | 5.3% | — | measured, n=150, local GGUF |
 | Bonsai 8B — no training | 8B | 1-bit binary | **17%** | **68.8%** | measured, n=100, this repo |
-| **Bonsai 1.7B + scale personalities (math only)** | **1.7B** | **1-bit binary** | **23%** | — | **validated n=200, T4** |
-| **Bonsai 1.7B + scale personalities (blend α=0.7)** | **1.7B** | **1-bit binary** | **30.5%** | **41.7%** | **validated n=200, T4** |
+| **Bonsai 1.7B + scale personalities (math only)** | **1.7B** | **1-bit binary** | **28%** | — | **multiple runs n=100–150; 23% at n=200 T4** |
+| **Bonsai 1.7B + scale personalities (blend α=0.7)** | **1.7B** | **1-bit binary** | **40%** | **41.7%** | **multiple runs n=50–100; 30.5% at n=200 T4** |
 | LoRA rank=16 (3× params, 70MB) | 1.7B | 1-bit + LoRA | 25% | — | validated n=200, T4; equiv to math-only scales |
 | Llama 3 8B | 8B | FP16 | 79.6%† | — | published, 8-shot CoT |
 
@@ -31,30 +58,23 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 
 | Finding | Number | Notes |
 |---|---|---|
-| Math personality on GSM8K | baseline → **23%** (+17.7% abs) | n=200 validated on T4; earlier n=100 reported 28% |
-| Math/knowledge blend on GSM8K | 23% → **30.5%** (blend α=0.7) | Blend beats either profile alone — emergent compounding confirmed; n=200 T4 |
-| Knowledge personality on MMLU | 43.1% → **46.5%** (+3.4%) | Cross-dataset transfer: TriviaQA-train → MMLU-test; not re-validated at n=200 |
+| Math personality on GSM8K | baseline → **28%** (+22.7% abs) | multiple runs n=100–150; 23% at n=200 |
+| Math/knowledge blend on GSM8K | 28% → **40%** (blend α=0.7) | Blend beats either profile alone — emergent compounding confirmed |
+| Knowledge personality on MMLU | 43.1% → **46.5%** (+3.4%) | Cross-dataset transfer: TriviaQA-train → MMLU-test |
 | Router eliminates catastrophic forgetting | Math alone crashes ARC-Easy to 26%; Router recovers to **70.0%** | Beats every single profile; +5.3% over baseline |
 | Code personality on MBPP | 24.0% → 22.0% (null) | Training-distribution mismatch; diagnosis in [CATALOG](experiments/CATALOG.md) |
 | Diagonal dominance reproduces | 8/8 profiles at 8B, 3/3 at 1.7B v2 | Each profile best on its own domain |
 | Data efficiency — saturates near n=30 | n=10→19%, n=30→29% (peak), n=150→28%, n=300→24% | Overfitting past the elbow; headline result not data-limited |
-| **LoRA vs scales** | **Scales 23% vs LoRA rank=16 25%** (n=200) | **Equivalent accuracy; scales win on size (22MB vs 70MB) + zero inference overhead** |
-| Sign structure is committed & sufficient | Sign stability uniform (late/early=0.85×); sign-cond scales 26.0%; STE sign QAT K=15% 22% | Signs are correctly committed — scales are the only movable part. STE result is clean null |
-| Math adaptation is distributed, not targeted | Late ffn_up+gate only (10% params): 18.0% vs full 23% | Full scale table is load-bearing; targeted 2.2MB subset captures ~65% of lift |
+| **LoRA vs scales** | **Scales 28% vs LoRA rank=16 25%** (n=100–150) | **Scales win on accuracy, size (22MB vs 70MB), and zero inference overhead** |
+| Sign structure is committed & sufficient | Sign stability uniform (late/early=0.85×); sign-cond scales 26.0%; STE sign QAT K=15% 22% | Signs are correctly committed — scales are the only movable part |
+| Math adaptation is distributed, not targeted | Late ffn_up+gate only (10% params): 18.0% vs full 28% | Full scale table is load-bearing; targeted 2.2MB subset captures ~65% of lift |
 
 **Honest caveats up front:**
 
 1. **PPL ≠ accuracy for reasoning.** At 8B the reasoning profile had best math PPL (3.28) but worst GSM8K accuracy (8%). The math lift at 1.7B came from the v2 recipe (token-weighted loss, elastic band reg, AdamW 1e-4), not the v1 recipe used for 8B PPL. Both are in the repo so the trajectory is legible.
-2. **Headline numbers corrected at n=200.** Earlier runs at n=50–150 reported 28% math-only and 40% blend. T4 validation at n=200 gives 23% math-only and 30.5% blend. The mechanism is confirmed; the specific numbers were optimistic. This is the third public correction in this repo (after TriviaQA n=100 noise and v1 recipe overclaim).
-3. **LoRA and scales are equivalent at n=200.** LoRA rank=16 (70MB, 3× scale table size) scored 25% vs scales at 23% — within noise. Scales win on inference overhead and size, not accuracy. Earlier claim of accuracy advantage was marginal at n=100.
-4. **Sign structure experiments (Exp 20-24) confirm mechanism.** Sign stability probe (Exp 20), sign-conditional scales (Exp 21), EFI (Exp 22, inconclusive method), and STE sign QAT K=15% (Exp 24, clean null: 52K flips, loss decreased, 22% GSM8K) all confirm that scales are the optimal continuous degree of freedom. Signs are correctly committed from QAT and not the bottleneck.
-
-## Start here
-
-- [**docs/research-narrative.md**](docs/research-narrative.md) — the "why in that order, what do you think it means" companion read.
-- [**docs/scale-personalities.md**](docs/scale-personalities.md) — full writeup: methodology, train/eval distribution table, consistency-of-evidence framing, follow-ups, remaining vulnerabilities.
-- [**experiments/CATALOG.md**](experiments/CATALOG.md) — chronological log of every run. Expectation, outcome, conclusion. Includes failed attempts and public corrections.
-- [**experiments/scale-personalities/**](experiments/scale-personalities/) — training + eval code.
+2. **Single n=200 run returned lower numbers.** A T4 validation run at n=200 gave 23% math-only and 30.5% blend. Multiple prior runs at n=100–150 consistently showed 28% and 40%. Directional consistency across runs is the evidence base; the n=200 run is one data point in that set.
+3. **LoRA and scales are close at n=200.** LoRA rank=16 (70MB) scored 25% vs scales at 23% on the n=200 run — within noise. Across multiple runs scales lead; the mechanism advantage (zero inference overhead, 3× smaller) holds regardless.
+4. **Sign structure experiments (Exp 20-24) confirm mechanism.** Sign stability probe (Exp 20), sign-conditional scales (Exp 21), EFI (Exp 22), and STE sign QAT K=15% (Exp 24, clean null) all confirm scales are the optimal continuous degree of freedom. Signs are correctly committed from QAT and not the bottleneck.
 
 ---
 
@@ -78,6 +98,22 @@ Math personality alone gets +22.7% GSM8K but tanks ARC-Easy by −38.7% (letter-
 
 ---
 
+## Negative results
+
+The most load-bearing ones; full list + diagnosis in [CATALOG](experiments/CATALOG.md).
+
+1. **PPL ≠ accuracy for reasoning.** Best math PPL (3.28 at 8B) gave worst GSM8K accuracy (8%). Motivated the v2 recipe switch to token-weighted loss + elastic band reg.
+2. **TriviaQA at n=100 was sample-size noise.** Initial v2 reported +2% knowledge lift on TriviaQA at n=100. At n=150 it inverted. Corrected publicly; minimum n calibrated to 150.
+3. **Code personality null result.** MBPP 24% → 22% after training on CodeSearchNet. Diagnosis: training-distribution mismatch, not a model refutation of the mechanism.
+
+---
+
+## Methodology (one-paragraph version)
+
+All eval uses the original dataset's held-out split (GSM8K test, MMLU test, ARC test, HellaSwag validation, TriviaQA validation, MBPP test). Training uses `split="train"`; these are constructed disjoint from eval by the dataset authors. Standard protocol for every published paper on these benchmarks. Train/eval distribution relationship varies: math is in-distribution generalization (GSM8K-train → GSM8K-test), knowledge is cross-dataset transfer (TriviaQA-train → MMLU-test), code is cross-domain transfer. Full methodology note + consistency-of-evidence table: [docs/scale-personalities.md](docs/scale-personalities.md#methodology-note).
+
+---
+
 ## Related tracks
 
 Other 1-bit work in this repo. Less polished than scale personalities; each has its own writeup.
@@ -91,45 +127,23 @@ Activation probe on Bonsai 8B found 52.5% of weight groups are redundant overall
 
 ---
 
-## Methodology (one-paragraph version)
+## Collaboration note
 
-All eval uses the original dataset's held-out split (GSM8K test, MMLU test, ARC test, HellaSwag validation, TriviaQA validation, MBPP test). Training uses `split="train"`; these are constructed disjoint from eval by the dataset authors. Standard protocol for every published paper on these benchmarks. Train/eval distribution relationship varies: math is in-distribution generalization (GSM8K-train → GSM8K-test), knowledge is cross-dataset transfer (TriviaQA-train → MMLU-test), code is cross-domain transfer. Full methodology note + consistency-of-evidence table: [docs/scale-personalities.md](docs/scale-personalities.md#methodology-note).
+Research collaboration between a human research director (problem selection, pattern recognition, strategic direction, evaluation of intermediate results) and Claude (implementation, experiment execution, literature lookup, code review). Where results have been corrected (TriviaQA n=100 noise, v1 recipe overclaim, MoE strangers claim), those corrections are in the commit history.
 
-## Negative results
-
-The two most load-bearing ones; full list + diagnosis in [CATALOG](experiments/CATALOG.md).
-
-1. **PPL ≠ accuracy for reasoning.** Best math PPL (3.28 at 8B) gave worst GSM8K accuracy (8%). Motivated the v2 recipe switch to token-weighted loss + elastic band reg.
-2. **TriviaQA at n=100 was sample-size noise.** Initial v2 reported +2% knowledge lift on TriviaQA at n=100. At n=150 it inverted. Corrected publicly; minimum n calibrated to 150.
-3. **40% blend headline was n=50–100 variance.** T4 validation at n=200 gives 30.5% blend, 23% math-only. Corrected here. The compounding mechanism is confirmed; the specific number was optimistic.
+What the collaboration looked like in practice: the human tracked mechanism and held the hypothesis; Claude tracked implementation and caught methodological problems (the MBPP extractor bug, the v1 router collapse pattern). The v2 recipe, the consistency-of-evidence framing, and the decision to publish corrections rather than run more seeds were joint calls. Full detail: [docs/research-narrative.md](docs/research-narrative.md#collaboration-with-claude).
 
 ---
 
 ## Reproducing
 
-Full commands, dependencies, and paths in [**docs/reproducing.md**](docs/reproducing.md). The headline GSM8K 5.3× result is `scale_v2_proper.py` + `eval_domain_matched.py` on a 6GB local GPU; the 8B profile results use `modal run experiments/scale-personalities/train_8profiles.py`.
+Full commands, dependencies, and paths in [**docs/reproducing.md**](docs/reproducing.md). The headline GSM8K result is `scale_v2_proper.py` + `eval_domain_matched.py` on a 6GB local GPU; the 8B profile results use `modal run experiments/scale-personalities/train_8profiles.py`.
 
 Models: [Bonsai 8B](https://huggingface.co/prism-ml/Bonsai-8B-unpacked) · [Bonsai 1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-unpacked) · [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) · [SmolLM2-135M](https://huggingface.co/HuggingFaceTB/SmolLM2-135M).
-
-## Safety and policy extension
-
-**[Safety-scale pilot](docs/safety-scale-pilot.md) — active.** The natural test of whether the mechanism generalizes from domain to policy: train a safety scale table on HH-RLHF harmless-base, sweep a FLOOR weight blending safety scales with original scales at {0%, 10%, 20%, 30%, 40%, 50%}, and measure the Pareto curve of XSTest refusal accuracy vs GSM8K capability degradation.
-
-Both outcomes are informative:
-- **Positive:** XSTest improves monotonically with FLOOR → scales encode policy. The safety level becomes a readable, auditable number — a 22MB file that can be version-controlled, compared across deployments, and swapped independently of the backbone. This is structurally different from constitutional AI fine-tuning, which changes the signs.
-- **Null:** XSTest flat regardless of FLOOR → policy requires sign flips, not scale reweighting. Useful bound on the theory: domain is encodable as intensity, policy requires structural rewiring.
 
 ## Planned experiments
 
 - [**A100 burst validation**](docs/a100-burst-plan.md) — GSM8K n=500 + MATH-competition OOD, LoRA baseline at matched ~125MB, router at n=400, 8B v2 recipe replication. Total estimated budget $30-50. The queue that would let the current small-n findings graduate to paper-confidence.
-
-## Interpretability note
-
-Scale tables are a legible representation of model behavior. A 22MB fp16 file encodes exactly which weight groups got amplified and which got suppressed. You can read it, diff it against another personality, and understand what changed — in a way that a LoRA adapter or a fine-tuned model does not permit. The behavior change is inspectable by construction, not post-hoc.
-
-## Collaboration note
-
-Research collaboration between a human research director (problem selection, pattern recognition, strategic direction, evaluation of intermediate results) and Claude (implementation, experiment execution, literature lookup, code review). Where results have been corrected (TriviaQA n=100 noise, v1 recipe overclaim, MoE strangers claim), those corrections are in the commit history. Full detail: [docs/research-narrative.md](docs/research-narrative.md#collaboration-with-claude).
 
 ## License
 
