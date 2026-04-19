@@ -10,40 +10,44 @@ Empirical research on 1-bit (binary weight) neural networks. What works, what do
 
 ### The headline number
 
-**A 1.7B binary model with scale personalities scores 40% on GSM8K (0-shot). The same protocol on an unmodified 8B binary model scores 17%.** A model 4.7× smaller hits 2.4× the math accuracy by swapping ~125MB of fp16 scale tables. All numbers below are 0-shot, same eval harness, same answer extraction.
+**A 1.7B binary model with scale personalities scores 30.5% on GSM8K (0-shot), validated at n=200. The same protocol on an unmodified 8B binary model scores 17%.** A model 4.7× smaller hits 1.8× the math accuracy by swapping two 22MB fp16 scale tables and interpolating. All numbers below are 0-shot, same eval harness, same answer extraction.
+
+*Note: earlier runs reported 40% at n=50–100. T4 validation at n=200 gives 30.5%. The mechanism (blending scale tables compounds above either alone) is confirmed; the specific 40% was small-n variance. Math-only result similarly corrects from 28% (n=100) to 23% (n=200).*
 
 ### Model comparison (0-shot GSM8K, our protocol)
 
 | Model | Params | Format | GSM8K (0-shot) | MMLU (0-shot) | Notes |
 |---|---|---|---|---|---|
-| Bonsai 1.7B — no training | 1.7B | 1-bit binary | 5.3% | — | measured, n=150 |
+| Bonsai 1.7B — no training | 1.7B | 1-bit binary | 5.3% | — | measured, n=150, local GGUF |
 | Bonsai 8B — no training | 8B | 1-bit binary | **17%** | **68.8%** | measured, n=100, this repo |
-| **Bonsai 1.7B + scale personalities** | **1.7B** | **1-bit binary** | **40%** | **41.7%** | **measured, n=50–100, this repo** |
+| **Bonsai 1.7B + scale personalities (math only)** | **1.7B** | **1-bit binary** | **23%** | — | **validated n=200, T4** |
+| **Bonsai 1.7B + scale personalities (blend α=0.7)** | **1.7B** | **1-bit binary** | **30.5%** | **41.7%** | **validated n=200, T4** |
+| LoRA rank=16 (3× params, 70MB) | 1.7B | 1-bit + LoRA | 25% | — | validated n=200, T4; equiv to math-only scales |
 | Llama 3 8B | 8B | FP16 | 79.6%† | — | published, 8-shot CoT |
 
-† *Published FP16 numbers use 8-shot chain-of-thought — a different protocol that substantially inflates scores vs 0-shot. The binary model comparison (1.7B vs 8B) uses the same 0-shot protocol and is directly comparable. A 0-shot FP16 8B eval on our harness is queued in the [A100 burst plan](docs/a100-burst-plan.md) (run #6).*
+† *Published FP16 numbers use 8-shot chain-of-thought — a different protocol that substantially inflates scores vs 0-shot. The binary model comparison (1.7B vs 8B) uses the same 0-shot protocol and is directly comparable.*
 
 ### All scale personality findings
 
 | Finding | Number | Notes |
 |---|---|---|
-| Math personality on GSM8K | 5.3% → **28.0%** (+22.7% abs, **5.3× rel**) | n=150 held-out test split; stat-sig (z ≈ 5+) |
-| Math/knowledge blend on GSM8K | 28.0% → **40.0%** (blend α=0.7) | Blend beats either profile in isolation — emergent compounding |
-| Knowledge personality on MMLU | 43.1% → **46.5%** (+3.4%) | Cross-dataset transfer: TriviaQA-train → MMLU-test |
+| Math personality on GSM8K | baseline → **23%** (+17.7% abs) | n=200 validated on T4; earlier n=100 reported 28% |
+| Math/knowledge blend on GSM8K | 23% → **30.5%** (blend α=0.7) | Blend beats either profile alone — emergent compounding confirmed; n=200 T4 |
+| Knowledge personality on MMLU | 43.1% → **46.5%** (+3.4%) | Cross-dataset transfer: TriviaQA-train → MMLU-test; not re-validated at n=200 |
 | Router eliminates catastrophic forgetting | Math alone crashes ARC-Easy to 26%; Router recovers to **70.0%** | Beats every single profile; +5.3% over baseline |
 | Code personality on MBPP | 24.0% → 22.0% (null) | Training-distribution mismatch; diagnosis in [CATALOG](experiments/CATALOG.md) |
 | Diagonal dominance reproduces | 8/8 profiles at 8B, 3/3 at 1.7B v2 | Each profile best on its own domain |
 | Data efficiency — saturates near n=30 | n=10→19%, n=30→29% (peak), n=150→28%, n=300→24% | Overfitting past the elbow; headline result not data-limited |
-| **LoRA null hypothesis rejected** | **Scales 28.0% vs LoRA rank=16 (3× params) 25.0%** | **Scales win on accuracy + size (22MB vs 70MB) + zero inference overhead** |
-| Sign structure is committed & sufficient | Sign stability uniform (late/early=0.85×); sign-cond scales 26.0%; EFI K=1% 27.0% | Signs are correctly committed — scales are the only movable part |
-| Math adaptation is distributed, not targeted | Late ffn_up+gate only (10% params): 18.0% vs full 28.0% | Full scale table is load-bearing; targeted 2.2MB subset captures ~65% of lift |
+| **LoRA vs scales** | **Scales 23% vs LoRA rank=16 25%** (n=200) | **Equivalent accuracy; scales win on size (22MB vs 70MB) + zero inference overhead** |
+| Sign structure is committed & sufficient | Sign stability uniform (late/early=0.85×); sign-cond scales 26.0%; STE sign QAT K=15% 22% | Signs are correctly committed — scales are the only movable part. STE result is clean null |
+| Math adaptation is distributed, not targeted | Late ffn_up+gate only (10% params): 18.0% vs full 23% | Full scale table is load-bearing; targeted 2.2MB subset captures ~65% of lift |
 
 **Honest caveats up front:**
 
-1. **PPL ≠ accuracy for reasoning.** At 8B the reasoning profile had best math PPL (3.28) but worst GSM8K accuracy (8%). The math 5.3× at 1.7B came from the v2 recipe (token-weighted loss, elastic band reg, AdamW 1e-4), not the v1 recipe used for 8B PPL. Both are in the repo so the trajectory is legible.
-2. **Sample sizes reflect a 6GB consumer GPU.** Headline benchmarks are n=100–150. Individual-row statistical significance is mixed: math GSM8K +22.7% is solidly significant (z ≈ 5+); the +5.3% ARC-Easy delta is directional, not significant at n=100. The strongest evidence is the pattern *across* rows (see [consistency of evidence](docs/scale-personalities.md#consistency-of-directional-evidence)), not any single number. A100 re-runs at n=400+ are queued.
-3. **LoRA baseline is now run (Exp 19).** LoRA rank=16 at 70MB (3× the scale table size) scored 25.0% GSM8K vs scales at 28.0%. Scales win on accuracy, size, and inference overhead. The null hypothesis is rejected — see [CATALOG](experiments/CATALOG.md#experiment-19) for the full result.
-4. **Sign structure experiments (Exp 20-22) confirm mechanism.** Sign stability probe (Exp 20), sign-conditional scales (Exp 21), and EFI sign unfreeze (Exp 22) all confirm that scales are the optimal and nearly complete continuous degree of freedom. The 28% ceiling is a data/capacity ceiling, not a sign-capacity ceiling.
+1. **PPL ≠ accuracy for reasoning.** At 8B the reasoning profile had best math PPL (3.28) but worst GSM8K accuracy (8%). The math lift at 1.7B came from the v2 recipe (token-weighted loss, elastic band reg, AdamW 1e-4), not the v1 recipe used for 8B PPL. Both are in the repo so the trajectory is legible.
+2. **Headline numbers corrected at n=200.** Earlier runs at n=50–150 reported 28% math-only and 40% blend. T4 validation at n=200 gives 23% math-only and 30.5% blend. The mechanism is confirmed; the specific numbers were optimistic. This is the third public correction in this repo (after TriviaQA n=100 noise and v1 recipe overclaim).
+3. **LoRA and scales are equivalent at n=200.** LoRA rank=16 (70MB, 3× scale table size) scored 25% vs scales at 23% — within noise. Scales win on inference overhead and size, not accuracy. Earlier claim of accuracy advantage was marginal at n=100.
+4. **Sign structure experiments (Exp 20-24) confirm mechanism.** Sign stability probe (Exp 20), sign-conditional scales (Exp 21), EFI (Exp 22, inconclusive method), and STE sign QAT K=15% (Exp 24, clean null: 52K flips, loss decreased, 22% GSM8K) all confirm that scales are the optimal continuous degree of freedom. Signs are correctly committed from QAT and not the bottleneck.
 
 ## Start here
 
@@ -95,8 +99,9 @@ All eval uses the original dataset's held-out split (GSM8K test, MMLU test, ARC 
 
 The two most load-bearing ones; full list + diagnosis in [CATALOG](experiments/CATALOG.md).
 
-1. **PPL ≠ accuracy for reasoning.** Best math PPL (3.28 at 8B) gave worst GSM8K accuracy (8%). Motivated the v2 recipe switch to token-weighted loss + elastic band reg, which finally produced the 5.3× lift.
+1. **PPL ≠ accuracy for reasoning.** Best math PPL (3.28 at 8B) gave worst GSM8K accuracy (8%). Motivated the v2 recipe switch to token-weighted loss + elastic band reg.
 2. **TriviaQA at n=100 was sample-size noise.** Initial v2 reported +2% knowledge lift on TriviaQA at n=100. At n=150 it inverted. Corrected publicly; minimum n calibrated to 150.
+3. **40% blend headline was n=50–100 variance.** T4 validation at n=200 gives 30.5% blend, 23% math-only. Corrected here. The compounding mechanism is confirmed; the specific number was optimistic.
 
 ---
 

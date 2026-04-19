@@ -519,3 +519,59 @@ This bounds the "targeted adaptation" hypothesis: the forensics correctly identi
 The distribution of adaptive signal across all layers also makes sense mechanistically: math reasoning requires vocabulary lookup (early embedding layers), multi-step attention patterns (mid layers), and output projection (late layers) to all be tuned together. Domain adaptation is inherently holistic.
 
 **Implementation note:** The `is_targeted()` function checks layer index AND projection type string, enabling arbitrary layer/type subset experiments without modifying the training loop.
+
+---
+
+## Experiment 24 — STE Sign QAT K=15% (2026-04-19)
+
+**Hypothesis:** Exp 22 (EFI) was methodologically broken — greedy sign swapping without STE meant the optimizer didn't know about the binarization boundary, making the null result inconclusive. A proper straight-through estimator (STE) with fp32 sign parameters initialized to ±0.1 (close to flip boundary), optimized with Adam, should give a clean answer on sign capacity.
+
+**Setup:**
+- Model: Bonsai 1.7B (PackedBitLinear fp16 base + fp32 patches for selected K%)
+- Ranking: scale gradient proxy (20 backward passes, |grad_scale| per group)
+- K=15%: top 1.65M groups → 211M signs unfrozen as fp32 patches (846MB)
+- STE: forward uses `sign(patch)`, backward passes gradient through as identity
+- Optimizer: Adam lr=1e-3, no gradient clipping (SGD with clip_norm=1.0 in prior run neutered gradients to ~7e-7 per param — 0 flips resulted)
+- Init: patch_signs = ±0.1 (not ±1.0 — close to boundary so gradients cross zero)
+- After training: commit_patches() writes binarized values to fp16 buffer; eval runs without index_put overhead
+- Eval: GSM8K test n=100, 0-shot, greedy
+
+**Results:**
+
+| Method | GSM8K | Sign flips | Notes |
+|--------|-------|-----------|-------|
+| No training (baseline) | ~17% | — | HF unpacked eval harness |
+| Math scales only | 23% | 0 | n=200 validated |
+| STE sign QAT K=15% | **22%** | 52,101 (0.004%) | clean null |
+
+**Implementation notes:**
+- Prior attempt (same session) had patch_signs initialized to ±1.0 with SGD + clip_norm=1.0: clip_grad_norm_ across 211M params → each param grad ~7e-7 → 0 flips, loss stuck at 4.015. Fixed by switching to Adam (per-param normalization) and ±0.1 init.
+- Loss decreased (4.015 → 3.958 → 3.422 → 3.238) confirming optimizer actually worked
+- 52,101 flips = 0.004% of all signs; 0.025% of unfrozen signs — extremely few
+
+**Verdict: NULL/REGRESSION (Δ=−1%) — signs have no additional capacity beyond scales at K=15%.**
+
+**Conclusion:** This is the first methodologically clean test of sign capacity. Adam + ±0.1 init + STE = optimizer works (loss drops, some flips happen), yet accuracy is flat or regresses vs scale-only. Unlike Exp 22 (broken mechanics, inconclusive), this result cleanly answers the question: at K=15% with a proper optimizer, sign flips do not unlock additional math capability. Signs are correctly committed from QAT. Scales are the complete and sufficient continuous degree of freedom for post-hoc domain adaptation.
+
+---
+
+## T4 Burst Validation (2026-04-19) — n=200 corrections
+
+Large-n re-validation of headline results using Modal T4 GPUs. Three concurrent functions: scale math v2, LoRA rank=16, STE sign QAT.
+
+**Corrected numbers (all n=200 unless noted):**
+
+| Experiment | n=100 (prior) | n=200 (validated) | Change |
+|---|---|---|---|
+| Math scales only | 28% | **23%** | −5pp |
+| LoRA rank=16 | 25% | **25%** | stable |
+| Sign QAT K=15% (STE) | — | **22%** (n=100) | new |
+| Blend α=0.7 math+knowledge | 40% (n=50–100) | **30.5%** | −9.5pp |
+
+**Key findings:**
+1. Math-only scales: 23% is the validated number. 28% was small-n variance at n=100.
+2. LoRA vs scales: equivalent accuracy at n=200 (25% vs 23%). Earlier "scales win" claim was marginal and doesn't hold at larger n. Scales still win on size (22MB vs 70MB) and zero inference overhead.
+3. Blend compounding confirmed: blend adds +7.5pp over math-only (23%→30.5%). The compounding mechanism is real; the 40% number was not.
+4. Sign QAT: clean null. 52K flips, loss decreases, no accuracy gain.
+
+This is the third major correction in the repo (after TriviaQA n=100 noise and v1 PPL overclaim). Each correction is in the commit history.
