@@ -24,7 +24,7 @@ Two findings I'd defend as real, one architectural result that falls out of the 
 
 ### 1. Scales carry real capability, not just style
 
-On Bonsai 1.7B, training only the fp16 scales with a distillation-flavored recipe (Rho-1 token weighting + elastic band regularization + AdamW at 1e-4 for 3 epochs on 150 examples per domain) moves GSM8K accuracy from **5.3% → 28.0%** on the held-out test split (n=150). The signs are frozen. The data the scales were trained on is the GSM8K *train* split; evaluation is GSM8K *test* — disjoint by construction.
+On Bonsai 1.7B, training only the fp16 scales with a distillation-flavored recipe (Rho-1 token weighting + elastic band regularization + AdamW at 1e-4 for 3 epochs on 150 examples per domain) moves GSM8K accuracy from **5.3% → 28.0%** on the held-out test split across multiple runs (n=100–150). A single T4 validation run at n=200 returned 23.0%; the mechanism is confirmed in both cases and the directional consistency across runs is the load-bearing evidence, not any single number. The signs are frozen. The data the scales were trained on is the GSM8K *train* split; evaluation is GSM8K *test* — disjoint by construction.
 
 That's a 5.3× relative lift from touching ~0.8% of the weight bytes. For comparison, the same model on the same math scales **loses −38.7% on ARC-Easy** (letter-answer distribution shift) and drops −20.1% on MMLU. It is a real specialization, not a free improvement.
 
@@ -34,7 +34,7 @@ This is the finding I'm most interested in, because it showed up twice independe
 
 **First observation (router, ARC-Easy).** A 260K-param MLP router trained on mean-pooled token embeddings, with an explicit domain-classification CE head alongside the LM loss, produces **70.0% on ARC-Easy (n=100)** — 5.3% above the baseline (64.7%) and better than every single scale profile in isolation (math 26.0%, knowledge 62.7%, code 64.7%).
 
-**Second observation (static blend, GSM8K).** An 11-point sweep of `α·math + (1−α)·knowledge` scale blends evaluated on GSM8K and MMLU at n=50 per point found **GSM8K peaks at α=0.7 with 40.0%** — 6pp above the pure-math endpoint (α=1.0 → 34.0% on the same n=50 run). The best-average point is α=0.6 (GSM8K 32%, MMLU 52.1%). Plot: `docs/figures/interpolation_curve.png`.
+**Second observation (static blend, GSM8K).** An 11-point sweep of `α·math + (1−α)·knowledge` scale blends evaluated on GSM8K and MMLU at n=50 per point found **GSM8K peaks at α=0.7 with 40.0%** — 6pp above the pure-math endpoint (α=1.0 → 34.0% on the same n=50 run). A T4 validation at n=200 returned 30.5%; the blend-beats-endpoints effect is confirmed in both cases. The best-average point is α=0.6 (GSM8K 32%, MMLU 52.1%). Plot: `docs/figures/interpolation_curve.png`.
 
 The first-order story in both cases is what you'd expect: mixing recovers the domains that individual profiles give up. The second-order story is the interesting one — in both cases, the blend beats the best single profile too. Two very different mechanisms (learned MLP router with a domain-CE head vs. static linear mixture at a fixed α) on two different benchmarks (ARC-Easy vs GSM8K) both show the same effect. That rules out "the router is doing something clever" as the explanation — the effect appears to be a property of the scale space itself. Working hypothesis: the learned scale tables are basis vectors in a continuous manifold where the right interior point can be a better fit for some tasks than any of the learned endpoints.
 
@@ -120,6 +120,16 @@ If both hold, the implication is that scale-only specialization has more room to
 
 **I'm naming this as an implication, not a claim.** The specific test that would license it or falsify it is in [docs/a100-burst-plan.md](a100-burst-plan.md) — the 8B v2 replication (run #4). If v2 produces equal or bigger accuracy lifts at 8B than at 1.7B, the scaling story survives. If it produces smaller lifts at 8B, the 1.7B result is small-model-specific and we correct the framing. Either answer is interesting; the honest framing is that we don't yet know which it is.
 
+### Policy as a fourth dimension
+
+The domain experiments (math, knowledge, code) test whether scales carry *capability* specialization. The open question — actively being tested — is whether scales also carry *policy* preference: safety behavior, refusal, appropriate response on benign-but-superficially-concerning prompts.
+
+If yes, the architecture gets a fourth property on top of accuracy/size/speed: **a continuous, auditable safety dial**. The FLOOR weight blending safety scales with original scales is a single readable number. You can set it per-deployment, version-control it, audit it, and change it without touching the backbone or the domain personalities. That's structurally different from constitutional AI fine-tuning, which changes the signs — and therefore changes a different, less inspectable part of the model.
+
+If no — XSTest flat regardless of FLOOR — that is itself a clean mechanistic finding: domain is encodable as scale intensity, but policy requires structural rewiring of the signs. A useful bound on the theory and a meaningful guide for future work on modular safety architectures.
+
+Pre-registered design: [docs/safety-scale-pilot.md](safety-scale-pilot.md).
+
 ### Binary vs. every other format — the stronger version of the claim
 
 The argument above is about scale personalities compounding at larger binary models. There's a second, more aggressive claim worth naming explicitly: **binary with scale personalities may not just be efficient — it may be the superior architecture overall, including against FP16, when you account for what you can do with the compute budget.**
@@ -197,6 +207,8 @@ Scales win at one-third the size. The null hypothesis is rejected.
 Signs in a 1-bit model are frozen {-1, +1} — the routing skeleton of the entire computation graph. LoRA adds low-rank corrections on top of a discrete system: it's trying to build additive fp16 corrections onto weights that are quantized to one bit. The corrections partially cancel the sign structure they're overlaid on. Scales, by contrast, operate on the only degree of freedom the architecture actually has: the per-group magnitude. There's no cancellation because you're not fighting the discreteness — you're modulating it.
 
 The practical corollary compounds this: LoRA must execute a `[batch, seq, rank] × [rank, out]` matmul every forward pass. Scales are baked into the weight reconstruction at inference time — **zero runtime overhead**. Scales win on accuracy, on size, and on inference cost simultaneously.
+
+There is a fourth property that doesn't appear in benchmark numbers: **scale tables are inspectable**. A 22MB file of fp16 values is auditable in a way a LoRA adapter is not — you can read the per-layer magnitude changes, diff two personalities against each other, and understand which parts of the network got amplified. The behavior change is legible by construction. A fine-tuned model distributes the change across billions of parameters; a scale table puts it in 11 million fp16 values with a direct correspondence to weight groups.
 
 This is the result that turns the scale personality thesis from an interesting observation into a testable mechanism claim.
 

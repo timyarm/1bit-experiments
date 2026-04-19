@@ -111,10 +111,21 @@ Full commands, dependencies, and paths in [**docs/reproducing.md**](docs/reprodu
 
 Models: [Bonsai 8B](https://huggingface.co/prism-ml/Bonsai-8B-unpacked) · [Bonsai 1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-unpacked) · [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) · [SmolLM2-135M](https://huggingface.co/HuggingFaceTB/SmolLM2-135M).
 
+## Safety and policy extension
+
+**[Safety-scale pilot](docs/safety-scale-pilot.md) — active.** The natural test of whether the mechanism generalizes from domain to policy: train a safety scale table on HH-RLHF harmless-base, sweep a FLOOR weight blending safety scales with original scales at {0%, 10%, 20%, 30%, 40%, 50%}, and measure the Pareto curve of XSTest refusal accuracy vs GSM8K capability degradation.
+
+Both outcomes are informative:
+- **Positive:** XSTest improves monotonically with FLOOR → scales encode policy. The safety level becomes a readable, auditable number — a 22MB file that can be version-controlled, compared across deployments, and swapped independently of the backbone. This is structurally different from constitutional AI fine-tuning, which changes the signs.
+- **Null:** XSTest flat regardless of FLOOR → policy requires sign flips, not scale reweighting. Useful bound on the theory: domain is encodable as intensity, policy requires structural rewiring.
+
 ## Planned experiments
 
-- [**Safety-scale pilot**](docs/safety-scale-pilot.md) — does the scale-personality mechanism extend from domain (math/code/knowledge) to *policy* (refusal/safety behavior)? Pre-registered plan for a floor+boost architecture with a Pareto sweep of safety-floor weight vs capability. Both outcomes informative — null result bounds the theory; positive result gives modular auditable safety. ~5hr local GPU, not yet executed.
 - [**A100 burst validation**](docs/a100-burst-plan.md) — GSM8K n=500 + MATH-competition OOD, LoRA baseline at matched ~125MB, router at n=400, 8B v2 recipe replication. Total estimated budget $30-50. The queue that would let the current small-n findings graduate to paper-confidence.
+
+## Interpretability note
+
+Scale tables are a legible representation of model behavior. A 22MB fp16 file encodes exactly which weight groups got amplified and which got suppressed. You can read it, diff it against another personality, and understand what changed — in a way that a LoRA adapter or a fine-tuned model does not permit. The behavior change is inspectable by construction, not post-hoc.
 
 ## Collaboration note
 
