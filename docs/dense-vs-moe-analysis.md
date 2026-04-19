@@ -120,10 +120,66 @@ The analysis above is derived from scale personality findings on dense models. T
 
 ---
 
+## At low-trillion scale — what opens up
+
+*Everything in this section is theoretical extension of the validated mechanism. No 1T 1-bit model exists. The path there requires 8B v2 → 70B+ 1-bit → MoE. Estimated 12-18 months from the experimental infrastructure existing.*
+
+### Scale table economics change character
+
+At 1.7B a personality table is 22MB — negligible. At 1T it's ~15.6GB. The "near-zero storage" framing changes:
+
+| Scale | Per-personality table | 50 personalities | 50 FP16 models |
+|---|---|---|---|
+| 1.7B | 22MB | 1.1GB | 170GB |
+| 8B | ~100MB | 5GB | 800GB |
+| 1T | ~15.6GB | 780GB | 100TB |
+
+Still 128× cheaper than FP16 at 1T — decisively so. But the absolute size matters for deployment: 780GB of scale tables is a real infrastructure consideration, not a footnote.
+
+The natural response is hierarchical: rather than one flat scale table per personality, split into global (domain), per-expert (sub-domain), and per-layer-depth (task type) tables. Each level is a fraction of the full 15.6GB. Three levels at ~0.8% overhead each gives three independent configuration axes at ~5GB total overhead per personality instead of 15.6GB.
+
+### Expert depth changes what scale profiles can do
+
+At 1T MoE with 8 experts, each expert is ~125B parameters. A 125B math expert is not a shallow domain specialist — it's a model with genuine deep capability, trained routing structure, and rich sign patterns in its domain. Scale profiles on top of a 125B expert operate on a fundamentally richer sign skeleton than scale profiles on a 1.7B or 8B backbone.
+
+Concretely: the Exp 25 finding — scales encode intensity, signs encode precision — has a different resolution at 1T MoE. A dedicated 125B safety expert has enough sign structure to discriminate finely between harmful and benign inputs, not just amplify general caution. The precision problem that requires EFI sign surgery at 1.7B is solved at 1T MoE by the expert's own depth. Scale floor becomes: safety expert activation probability ≥ FLOOR. The FLOOR mechanism is identical; the expert behind it is vastly more capable.
+
+### Three-level personality hierarchy
+
+At 1T MoE the scale personality architecture can operate at three granularities simultaneously:
+
+```
+Global scale table       → broad domain (science, medicine, law, safety)
+  Per-expert scale table → sub-domain (oncology within medicine)
+    Layer-depth table    → task type (diagnosis vs. research vs. treatment)
+```
+
+Each level requires training a separate scale snapshot and a router weight. At 1T there are enough scale groups at each granularity (~60M per layer for a 1T model) that all three levels carry independent signal. At 1.7B the total scale count (~11M) is too shallow to meaningfully differentiate three levels — the signal bleeds between levels.
+
+### The deployment economics at trillion scale
+
+One trillion-parameter training run. Everything after — deployment configuration, domain specialization, policy tuning, safety floor — via scale tables.
+
+For an organization running hundreds of deployment variants, the difference between "retrain per variant" and "swap scale table per variant" is the difference between millions of dollars per variant and thousands. The trillion-parameter sign structure is shared infrastructure; the scale tables are configuration. This separation of concerns doesn't exist in FP16 architectures — every fine-tuned variant is a full copy of the model.
+
+The auditable safety property scales directly: a safety floor is a single readable number regardless of model size. A 1T model with a floor=0.3 safety configuration is as inspectable as a 1.7B model with the same floor. The scale table that encodes it is larger (15.6GB vs 22MB) but structurally identical and equally readable.
+
+### Dynamic scale tables — a new capability at scale
+
+At 1T, a lightweight network that generates scale tables conditioned on input becomes practical. Instead of a static 15.6GB personality table, a 100M-param "scale network" produces a scale table per request — dynamic personality selection rather than fixed global configuration.
+
+This is the continuous-manifold hypothesis from the blend experiments taken to its logical endpoint: rather than manually choosing blend points (α=0.7 math + 0.3 knowledge), a small network learns the optimal blend for each input. The router already does this for expert selection; a scale network does it for intensity configuration within each expert.
+
+At 1.7B this would be overhead-heavy relative to the model. At 1T, 100M params is 0.01% of the model — negligible inference cost for the capability it provides.
+
+---
+
 ## Summary
 
 **The core claim** (derived from measured results, not itself measured): 1-bit quantization removes the primary motivation for MoE at scales below ~100-200B. Dense 1-bit + scale personalities is simpler, equally capable, and more inspectable than 1-bit MoE in this range.
 
 **Above ~100-200B**, 1-bit MoE becomes relevant again for activation cost reasons, and per-expert scale tables create a two-level specialization architecture that has no analog in either dense 1-bit or FP16 MoE alone.
 
-**The honest boundary:** this is architectural reasoning from first principles plus the scale personality mechanism. None of the MoE-specific claims have been tested. The crossover point is an estimate. The compounding hypothesis is a hypothesis. What's solid is the foundation: the mechanism is real, the storage math is measured, and the logic follows from both.
+**At low-trillion scale**, the architecture matures: expert depth solves the precision problems that sign surgery addresses at small scale, three-level personality hierarchies become practical, and dynamic scale generation via a lightweight network becomes feasible. The trillion-parameter training run becomes shared infrastructure; scale tables become the configuration layer above it.
+
+**The honest boundary:** this is architectural reasoning from first principles plus the scale personality mechanism. None of the MoE-specific or trillion-scale claims have been tested. The crossover point is an estimate. What's solid is the foundation: the mechanism is real at 1.7B and 8B, the storage math is measured, and the architectural logic follows from both.
