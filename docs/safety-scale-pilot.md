@@ -94,7 +94,7 @@ Fits in a single focused session on the local GPU; no cloud needed.
 
 ## Why this matters for the research artifact
 
-The scale-personalities track has clean results on three positive profiles (math ✓, knowledge ✓, code ✗ for data reasons) plus an anti-forgetting router. Safety as the fourth positive profile — or as a clean negative result bounding the theory — is the test that shows whether the mechanism generalizes from domain to policy. For an Anthropic audience specifically, "here is the curve we measured" beats "here is what we think the mechanism predicts" by a significant margin.
+The scale-personalities track has clean results on three positive profiles (math ✓, knowledge ✓, code ✗ for data reasons) plus an anti-forgetting router. Safety as the fourth positive profile — or as a clean negative result bounding the theory — is the test that shows whether the mechanism generalizes from domain to policy. "Here is the curve we measured" beats "here is what we think the mechanism predicts" by a significant margin.
 
 ## Not in scope
 

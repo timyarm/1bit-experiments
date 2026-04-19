@@ -12,7 +12,7 @@ This is a hypothesis, not a measured result. The 8B v2 replication is the experi
 
 ## Safety and interpretability
 
-**The most Anthropic-relevant question this repo is actively testing:** does the mechanism generalize from domain to policy?
+**The open question this repo is actively testing:** does the mechanism generalize from domain to policy?
 
 If fp16 scales can encode safety behavior — refusal on harmful prompts, compliance on benign ones — the architecture provides a **continuous, auditable safety dial**. The FLOOR weight blending safety scales with original scales is a single readable number. You can set it per-deployment, version-control it, audit it, and change it without touching the backbone or domain personalities. This is structurally different from constitutional AI fine-tuning, which changes the signs.
 
