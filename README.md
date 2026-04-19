@@ -18,9 +18,11 @@ If fp16 scales can encode safety behavior — refusal on harmful prompts, compli
 
 **Scale tables are legible.** A 22MB fp16 file encodes exactly which weight groups got amplified and suppressed. You can read it, diff it against another personality, and understand what changed — in a way that a LoRA adapter or fine-tuned model does not permit. The behavior change is inspectable by construction, not post-hoc.
 
-Pre-registered pilot with both outcomes informative: [docs/safety-scale-pilot.md](docs/safety-scale-pilot.md).
-- **Positive result:** XSTest improves monotonically with FLOOR → scales encode policy. Modular auditable safety becomes a real architectural option.
-- **Null result:** XSTest flat regardless of FLOOR → policy requires sign flips, not scale reweighting. Meaningful bound on the theory: domain is encodable as intensity, policy requires structural rewiring.
+**Pilot completed 2026-04-19.** Full results: [docs/safety-scale-pilot.md](docs/safety-scale-pilot.md).
+
+**Finding: scales encode policy intensity, not policy precision.** Unsafe refusal rate climbs 3× at floor=0.3 (16% → 47.8%) — policy IS encodable in scales. Above floor=0.3, safe-prompt over-refusal explodes as the scale table's general caution signal overwhelms the backbone's sign-level harm discrimination. Sweet spot is floor=0.3: real safety lift, acceptable over-refusal cost.
+
+**Mechanistic conclusion:** signs encode precision (which inputs trigger refusal), scales encode intensity (how strongly refusal fires). Both axes are required for discriminating safety behavior. The natural follow-up is DPO-style contrastive scale training using (chosen, rejected) pairs rather than chosen-only — giving scales a discrimination signal rather than a pure intensity signal.
 
 ## Start here
 

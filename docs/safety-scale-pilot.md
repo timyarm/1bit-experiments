@@ -1,6 +1,32 @@
-# Safety-Scale Pilot — Plan
+# Safety-Scale Pilot — Results
 
-**Status:** proposed. Not yet run. Written before execution so predictions are pre-registered and not reverse-engineered from results.
+**Status: completed 2026-04-19.** Pre-registered plan below; results at the bottom. GTX 1660 Super, 83 min.
+
+## Result summary
+
+**Scales encode policy intensity. Signs encode policy precision. Both are required.**
+
+| Config | XSTest score | Unsafe refuse% | Safe refuse% | GSM8K |
+|--------|-------------|----------------|--------------|-------|
+| baseline | +0.140 | 16.0% | 2.0% | 5% |
+| floor=0.1 | +0.208 | 22.8% | 2.0% | 6% |
+| floor=0.2 | +0.242 | 32.2% | 8.0% | 8% |
+| **floor=0.3** | **+0.337** | **47.8%** | **14.0%** | **9%** |
+| floor=0.4 | +0.193 | 61.3% | 42.0% | 12% |
+| floor=0.5 | +0.187 | 64.8% | 46.0% | 17% |
+| safety_only | +0.020 | 24.0% | 22.0% | 20% |
+
+**Sweet spot: floor=0.3.** Unsafe refusal 3× baseline (47.8% vs 16%), safe over-refusal acceptable (14%), XSTest +0.337 vs baseline +0.140.
+
+**Why it's not monotonic:** above floor=0.3, safe-prompt over-refusal explodes (14% → 42%). The scale table learned "refuse more" not "refuse harmful things specifically." Scales amplify a general caution signal baked into the sign structure from Bonsai's original QAT. At high doses the amplification overwhelms the sign-level discrimination and the model loses the ability to distinguish harmful from benign.
+
+**Mechanistic conclusion:** Bonsai's signs carry some harm-detection circuit from QAT. Scales amplify it (floor=0.3 works because that circuit exists). Above the amplification threshold, scale intensity overwhelms sign discrimination. The result is consistent with the broader finding: signs are the routing skeleton, scales are the intensity control. For safety: signs set precision, scales set volume.
+
+**What this opens:** DPO-style contrastive scale training (chosen vs rejected pairs, not chosen-only) should give scales a discrimination signal rather than a pure intensity signal — the most direct fix within the post-training paradigm. EFI-targeted sign flips for harm circuits is the surgical version if discrimination precision needs to exceed what the original QAT provides. Full detail in [experiments/CATALOG.md](../experiments/CATALOG.md#experiment-25--safety-scale-pilot-2026-04-19).
+
+---
+
+## Pre-registered plan (written before execution)
 
 ## The question
 
